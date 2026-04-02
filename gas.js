@@ -540,37 +540,48 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
     accounts.forEach((a, i) => console.log(`     ${i + 1}. ${a.email}`));
 
     // --- PENGATURAN OTOMATIS (Tanpa Prompt) ---
-    const selected = accounts;     // Jalankan semua akun
-    const threads = 1;             // 1 thread concurrent
-    const maxLoops = 1;            // 1x jalan (tanpa loop)
-    const useHeadless = false;     // Wajib false agar ekstensi berjalan
+    const selected = accounts; // Jalankan semua akun
+    const threads = 1; // 1 thread concurrent
+    const maxLoops = 1; // 1x jalan (tanpa loop)
+    const useHeadless = false; // Wajib false agar ekstensi berjalan
 
     console.log(`\n  → Menjalankan semua ${selected.length} akun secara otomatis.`);
     console.log(`  → Thread: ${threads}`);
     console.log(`  → Loop mode: 1x`);
     console.log(`  → Headless: tidak\n`);
 
-    async function processAccount({ email, password }, label) {
+    async function processAccount({
+        email,
+        password
+    }, label) {
         console.log(`\n${'═'.repeat(50)}`);
         console.log(`  ${label}: ${email}`);
         console.log(`${'═'.repeat(50)}`);
 
         const emailSlug = email.replace(/[@.]/g, '_');
         const profileDir = path.join(CONFIG.PROFILES_DIR, emailSlug);
-        if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
+        if (!fs.existsSync(profileDir))
+            fs.mkdirSync(profileDir, {
+                recursive: true
+            });
         console.log(`  → Profile: ${profileDir}`);
 
         const proxyStr = loadProxy();
         const proxyConfig = proxyStr ? parseProxyString(proxyStr) : undefined;
-        if (proxyConfig) console.log(`  → Proxy: ${proxyConfig.server}`);
-        else console.log('  → Proxy: tidak dipakai');
+        if (proxyConfig)
+            console.log(`  → Proxy: ${proxyConfig.server}`);
+        else
+            console.log('  → Proxy: tidak dipakai');
 
         console.log('  → Memulai browser...');
         const extensionPath = path.resolve(__dirname, "Humans");
 
         const context = await chromium.launchPersistentContext(profileDir, {
             headless: useHeadless, // Menggunakan variabel otomatis (false)
-            viewport: { width: 1366, height: 768 },
+            viewport: {
+                width: 1366,
+                height: 768
+            },
             args: [
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
@@ -579,10 +590,13 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 "--disable-gpu",
                 "--disable-setuid-sandbox",
                 `--disable-extensions-except=${extensionPath}`, 
-                `--load-extension=${extensionPath}`
+`--load-extension=${extensionPath}`
             ],
             permissions: ['clipboard-read', 'clipboard-write'],
-            ...(proxyConfig ? { proxy: proxyConfig } : {}),
+            ...(proxyConfig ? {
+                proxy: proxyConfig
+            }
+                 : {}),
             locale: "en-US",
             timezoneId: "Asia/Jakarta",
         });
@@ -593,20 +607,28 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             console.log('\n┌─────────────────────────────────────────');
             console.log('│  Step 1 — Login');
             console.log('└─────────────────────────────────────────');
-            await page.goto(CONFIG.LOGIN_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+            await page.goto(CONFIG.LOGIN_URL, {
+                waitUntil: "domcontentloaded",
+                timeout: 60000
+            });
             await randomDelay();
             await randomMouseMove(page);
 
             const currentUrl = page.url();
             const emailBtn = page.locator('#use-email-and-password-button');
-            const isOnLoginPage = currentUrl.includes("sign_in") && await emailBtn.isVisible({ timeout: 8000 }).catch(() => false);
+            const isOnLoginPage = currentUrl.includes("sign_in") && await emailBtn.isVisible({
+                timeout: 8000
+            }).catch(() => false);
 
             if (!isOnLoginPage) {
                 console.log('  ✔ Sudah login — lewati fase login.');
             } else {
                 console.log('  → Klik "Use email and password"...');
                 const useEmailLink = page.locator('#use-email-and-password-button');
-                await useEmailLink.waitFor({ state: "visible", timeout: 15000 });
+                await useEmailLink.waitFor({
+                    state: "visible",
+                    timeout: 15000
+                });
                 await randomDelay(1000, 2000);
                 await randomMouseMove(page);
                 await useEmailLink.click();
@@ -615,7 +637,10 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 console.log('  → Mengisi email dan password...');
 
                 const emailField = page.locator('input[type="email"], input[name="user[email]"], input#user_email');
-                await emailField.waitFor({ state: "visible", timeout: 15000 });
+                await emailField.waitFor({
+                    state: "visible",
+                    timeout: 15000
+                });
                 await emailField.click();
                 await randomDelay(500, 1200);
                 await humanType(emailField, email);
@@ -624,7 +649,10 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 await randomDelay(800, 1500);
 
                 const passwordField = page.locator('input[type="password"], input[name="user[password]"], input#user_password');
-                await passwordField.waitFor({ state: "visible", timeout: 15000 });
+                await passwordField.waitFor({
+                    state: "visible",
+                    timeout: 15000
+                });
                 await passwordField.click();
                 await randomDelay(500, 1200);
                 await humanType(passwordField, password);
@@ -634,10 +662,15 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
 
                 console.log('  → Klik Sign in...');
                 const signInBtn = page.locator('ql-button[type="submit"][data-analytics-action="clicked_sign_in"]');
-                await signInBtn.waitFor({ state: "visible", timeout: 10000 });
+                await signInBtn.waitFor({
+                    state: "visible",
+                    timeout: 10000
+                });
                 await signInBtn.click();
 
-                await page.waitForLoadState("domcontentloaded", { timeout: 30000 });
+                await page.waitForLoadState("domcontentloaded", {
+                    timeout: 30000
+                });
                 await randomDelay();
 
                 console.log(`  ✔ Login selesai → ${page.url()}`);
@@ -646,7 +679,10 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             console.log('\n┌─────────────────────────────────────────');
             console.log('│  Step 2 — Buka Lab');
             console.log('└─────────────────────────────────────────');
-            await page.goto(CONFIG.LAB_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+            await page.goto(CONFIG.LAB_URL, {
+                waitUntil: "domcontentloaded",
+                timeout: 60000
+            });
 
             page.on('response', async res => {
                 const url = res.url();
@@ -666,7 +702,10 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             console.log('│  Step 3 — Start Lab');
             console.log('└─────────────────────────────────────────');
             console.log('  ~ Menunggu ql-lab-control-panel...');
-            await page.waitForSelector('ql-lab-control-panel', { state: 'attached', timeout: 30000 });
+            await page.waitForSelector('ql-lab-control-panel', {
+                state: 'attached',
+                timeout: 30000
+            });
             console.log('  ✔ Panel ditemukan.');
 
             const btnState = await page.evaluate(() => {
@@ -689,13 +728,19 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 try {
                     await page.waitForFunction(() => {
                         const panel = document.querySelector('ql-lab-control-panel');
-                        if (!panel) return false;
+                        if (!panel)
+                            return false;
                         const attr = panel.getAttribute('labcontrolbutton');
-                        if (!attr) return false;
+                        if (!attr)
+                            return false;
                         try {
                             return JSON.parse(attr).disabled === false;
-                        } catch { return false; }
-                    }, { timeout: 30000 });
+                        } catch {
+                            return false;
+                        }
+                    }, {
+                        timeout: 30000
+                    });
                     console.log('  ✔ Tombol Start Lab aktif!');
                 } catch {
                     console.log('  ⚠  Tombol masih disabled setelah 30s.');
@@ -707,19 +752,28 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 console.log('  → Klik Start Lab...');
                 const clickResult = await page.evaluate(() => {
                     const panel = document.querySelector('ql-lab-control-panel');
-                    if (!panel || !panel.shadowRoot) return 'no-panel-shadow';
+                    if (!panel || !panel.shadowRoot)
+                        return 'no-panel-shadow';
                     const controlBtn = panel.shadowRoot.querySelector('ql-lab-control-button, #lab-control-button');
-                    if (!controlBtn || !controlBtn.shadowRoot) return 'no-control-btn';
+                    if (!controlBtn || !controlBtn.shadowRoot)
+                        return 'no-control-btn';
                     const qlBtn = controlBtn.shadowRoot.querySelector('ql-button');
-                    if (!qlBtn) return 'no-ql-button';
+                    if (!qlBtn)
+                        return 'no-ql-button';
                     if (qlBtn.shadowRoot) {
                         const mdBtn = qlBtn.shadowRoot.querySelector('md-filled-button');
                         if (mdBtn && mdBtn.shadowRoot) {
                             const btn = mdBtn.shadowRoot.querySelector('button');
-                            if (btn) { btn.click(); return 'clicked-deep'; }
+                            if (btn) {
+                                btn.click();
+                                return 'clicked-deep';
+                            }
                         }
                         const btn = qlBtn.shadowRoot.querySelector('button');
-                        if (btn) { btn.click(); return 'clicked-shadow-btn'; }
+                        if (btn) {
+                            btn.click();
+                            return 'clicked-shadow-btn';
+                        }
                     }
                     qlBtn.click();
                     return 'clicked-ql-button';
@@ -739,20 +793,33 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
 
                     const labState = await page.evaluate(() => {
                         const panel = document.querySelector('ql-lab-control-panel');
-                        if (!panel) return { starting: false };
+                        if (!panel)
+                            return {
+                                starting: false
+                            };
                         if (panel.shadowRoot) {
                             const text = panel.shadowRoot.textContent || '';
-                            if (text.includes('End Lab') || text.includes('Provisioning')) return { starting: true };
+                            if (text.includes('End Lab') || text.includes('Provisioning'))
+                                return {
+                                    starting: true
+                                };
                         }
                         const attr = panel.getAttribute('labcontrolbutton');
                         if (attr) {
                             try {
                                 const s = JSON.parse(attr);
-                                if (s.running || s.pending) return { starting: true };
+                                if (s.running || s.pending)
+                                    return {
+                                        starting: true
+                                    };
                             } catch {}
                         }
-                        return { starting: false };
-                    }).catch(() => ({ starting: false }));
+                        return {
+                            starting: false
+                        };
+                    }).catch(() => ({
+                                starting: false
+                            }));
 
                     if (labState.starting) {
                         console.log('  ✔ Lab mulai berjalan — tidak perlu CAPTCHA!');
@@ -801,7 +868,10 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                     if (anchorFrame) {
                         try {
                             const checkbox = anchorFrame.locator('#recaptcha-anchor, .recaptcha-checkbox-border');
-                            await checkbox.waitFor({ state: 'visible', timeout: 5000 });
+                            await checkbox.waitFor({
+                                state: 'visible',
+                                timeout: 5000
+                            });
                             await randomDelay(500, 1500);
                             await checkbox.click();
                             console.log('  ✔ Checkbox reCAPTCHA diklik via frame!');
@@ -820,16 +890,20 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
 
                             for (let i = 0; i < count; i++) {
                                 const src = await iframes.nth(i).getAttribute('src');
-                                if (src && src.includes('size=invisible')) continue;
+                                if (src && src.includes('size=invisible'))
+                                    continue;
 
                                 const siteKeyMatch = src?.match(/k=([A-Za-z0-9_-]+)/);
                                 let frameSelector = `iframe[src*="recaptcha"][src*="anchor"]`;
-                                if (siteKeyMatch) frameSelector = `iframe[src*="${siteKeyMatch[1]}"][src*="anchor"]`;
+                                if (siteKeyMatch)
+                                    frameSelector = `iframe[src*="${siteKeyMatch[1]}"][src*="anchor"]`;
 
                                 try {
                                     const frame = page.frameLocator(frameSelector).first();
                                     const checkbox = frame.locator('#recaptcha-anchor');
-                                    await checkbox.click({ timeout: 5000 });
+                                    await checkbox.click({
+                                        timeout: 5000
+                                    });
                                     console.log(`  ✔ Checkbox diklik via locator (iframe ${i})!`);
                                     clicked = true;
                                     break;
@@ -840,11 +914,13 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
 
                     if (!clicked) {
                         console.log('  → Coba via sitekey...');
-                        for (const sitekey of [CONFIG.RECAPTCHA_SITEKEY, '6LeOI8IUAAAAAPkHlMAE9NReCD_1WD81iYlBlCnV']) {
+                        for (const sitekey of[CONFIG.RECAPTCHA_SITEKEY, '6LeOI8IUAAAAAPkHlMAE9NReCD_1WD81iYlBlCnV']) {
                             try {
                                 const frame = page.frameLocator(`iframe[src*="${sitekey}"]`).first();
                                 const checkbox = frame.locator('#recaptcha-anchor');
-                                await checkbox.click({ timeout: 5000 });
+                                await checkbox.click({
+                                    timeout: 5000
+                                });
                                 console.log(`  ✔ Checkbox diklik (sitekey: ${sitekey.substring(0, 10)}…)!`);
                                 clicked = true;
                                 break;
@@ -866,26 +942,40 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                         }
                         const af = page.frames().find(f => f.url().includes('anchor') && !f.url().includes('invisible'));
                         if (af) {
-                            const checked = await af.locator('#recaptcha-anchor[aria-checked="true"]').isVisible({ timeout: 300 }).catch(() => false);
-                            if (checked) break;
+                            const checked = await af.locator('#recaptcha-anchor[aria-checked="true"]').isVisible({
+                                timeout: 300
+                            }).catch(() => false);
+                            if (checked)
+                                break;
                         }
                     }
-                    if (!bframeExists) bframeExists = page.frames().some(f => f.url().includes('bframe'));
-                    
+                    if (!bframeExists)
+                        bframeExists = page.frames().some(f => f.url().includes('bframe'));
+
                     if (bframeExists) {
                         console.log('  → Image challenge muncul — memicu ekstensi "Human"...');
 
-                        const bframe = page.frames().find(f => f.url().includes('bframe'));
-                        if (bframe) {
-                            try {
-                                const extButton = bframe.locator('.help-button-holder').first();
-                                await extButton.waitFor({ state: 'visible', timeout: 10000 });
-                                await extButton.click();
-                                console.log('  ✔ Tombol ekstensi diklik, menunggu proses bypass...');
+                        const maxRetries = 3;
+                        let extSolved = false;
+                        let launchLabAppeared = false;
+                        const launchLabLocator = page.locator('.js-launch-button.js-lab-access-modal-button').first();
 
-                                let extSolved = false;
-                                let launchLabAppeared = false;
-                                const launchLabLocator = page.locator('.js-launch-button.js-lab-access-modal-button').first();
+                        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                            // Mencari ulang bframe di setiap percobaan karena URL atau frame bisa bergeser pasca-reload
+                            const currentBframe = page.frames().find(f => f.url().includes('bframe'));
+                            if (!currentBframe)
+                                break;
+
+                            try {
+                                const extButton = currentBframe.locator('.help-button-holder').first();
+                                await extButton.waitFor({
+                                    state: 'visible',
+                                    timeout: 10000
+                                });
+                                await extButton.click();
+                                console.log(`  ✔ [Attempt ${attempt}] Tombol ekstensi diklik, menunggu proses bypass...`);
+
+                                extSolved = false;
 
                                 // Polling paralel multi-indikator
                                 for (let wait = 0; wait < 40; wait++) {
@@ -905,23 +995,30 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
 
                                     const af = page.frames().find(f => f.url().includes('anchor') && !f.url().includes('invisible'));
                                     if (af) {
-                                        const isChecked = await af.locator('#recaptcha-anchor[aria-checked="true"]').isVisible({ timeout: 300 }).catch(() => false);
-                                        if (isChecked) { extSolved = true; break; }
+                                        const isChecked = await af.locator('#recaptcha-anchor[aria-checked="true"]').isVisible({
+                                            timeout: 300
+                                        }).catch(() => false);
+                                        if (isChecked) {
+                                            extSolved = true;
+                                            break;
+                                        }
                                     }
 
                                     const labIsStarting = await page.evaluate(() => {
                                         const panel = document.querySelector('ql-lab-control-panel');
-                                        if (!panel) return false;
+                                        if (!panel)
+                                            return false;
                                         const attr = panel.getAttribute('labcontrolbutton');
                                         if (attr) {
                                             try {
                                                 const s = JSON.parse(attr);
-                                                if (s.running || s.pending) return true;
+                                                if (s.running || s.pending)
+                                                    return true;
                                             } catch {}
                                         }
                                         return false;
                                     }).catch(() => false);
-                                    
+
                                     if (labIsStarting) {
                                         console.log('  ✔ Lab terdeteksi mulai berjalan di latar belakang!');
                                         extSolved = true;
@@ -935,370 +1032,440 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                                     if (launchLabAppeared || await launchLabLocator.isVisible().catch(() => false)) {
                                         console.log('  → Modal "Launch Lab" terdeteksi, mengklik...');
                                         await new Promise(r => setTimeout(r, 1000));
-                                        await launchLabLocator.click({ timeout: 5000 });
+                                        await launchLabLocator.click({
+                                            timeout: 5000
+                                        });
                                         console.log('  ✔ Tombol "Launch Lab" berhasil diklik!');
                                     } else {
-                                        console.log('  → Tidak ada modal Launch Lab. Lanjut ke Step 5.');
+                                        console.log('  → Tidak ada modal Launch Lab. Lanjut.');
                                     }
+                                    break; // Keluar dari loop retry
                                 } else {
-                                    console.log('  ✘ Ekstensi timeout atau gagal, akan mencoba retry.');
-                                    throw new Error('CAPTCHA_FAILED_BY_EXTENSION');
+                                    console.log(`  ✘ [Attempt ${attempt}] Ekstensi timeout atau macet.`);
+                                    if (attempt < maxRetries) {
+                                        console.log('  → Reloading CAPTCHA...');
+                                        try {
+                                            const reloadBtn = currentBframe.locator('#recaptcha-reload-button').first();
+                                            await reloadBtn.click({
+                                                timeout: 5000
+                                            });
+                                            await new Promise(r => setTimeout(r, 3000)); // Jeda memuat gambar baru
+                                        } catch (err) {
+                                            console.log(`  ⚠ Gagal klik tombol reload: ${err.message.substring(0, 50)}`);
+                                        }
+                                    }
                                 }
                             } catch (e) {
-                                console.log(`  ✘ Gagal memicu ekstensi atau eksekusi: ${e.message.substring(0, 80)}`);
-                                throw new Error('EXTENSION_INTERACTION_FAILED');
+                                console.log(`  ✘ Gagal interaksi ekstensi di attempt ${attempt}: ${e.message.substring(0, 80)}`);
                             }
                         }
 
-                    } else {
-                        const anchorOk = page.frames().find(f => f.url().includes('recaptcha') && f.url().includes('anchor') && !f.url().includes('invisible'));
-                        if (anchorOk) {
-                            const isChecked = await anchorOk.locator('#recaptcha-anchor[aria-checked="true"]').isVisible({ timeout: 3000 }).catch(() => false);
-                            if (isChecked) {
-                                console.log('  ✔ reCAPTCHA auto-lolos — checkbox tercentang!');
-                            } else {
-                                console.log('  ⚠  Checkbox belum tercentang, tidak ada image challenge.');
+                        if (!extSolved) {
+                            console.log('  ✘ Ekstensi gagal menembus reCAPTCHA setelah 3x percobaan.');
+                            throw new Error('CAPTCHA_FAILED_BY_EXTENSION');
+                        }
+                    }
+
+                    console.log('\n┌─────────────────────────────────────────');
+                    console.log('│  Step 5+6 — Tunggu Lab + Kredensial');
+                    console.log('└─────────────────────────────────────────');
+                    console.log('  ~ Menunggu lab berjalan & kredensial muncul...');
+                    let labStarted = false;
+
+                    try {
+                        await page.waitForFunction(() => {
+                            const panel = document.querySelector('ql-lab-control-panel');
+                            if (!panel)
+                                return false;
+
+                            function hasCredentials(root, depth = 0) {
+                                if (!root || depth > 10)
+                                    return false;
+                                for (const attrName of(root.host?.getAttributeNames?.() || [])) {
+                                    const val = root.host.getAttribute(attrName);
+                                    if (val && (val.includes('student-') || val.includes('qwiklabs-gcp-')))
+                                        return true;
+                                }
+                                const text = root.textContent || '';
+                                if (/student-[a-z0-9]+@/.test(text) || /qwiklabs-gcp-/.test(text))
+                                    return true;
+                                const els = root.querySelectorAll('*');
+                                for (const el of els) {
+                                    if (el.shadowRoot && hasCredentials(el.shadowRoot, depth + 1))
+                                        return true;
+                                }
+                                return false;
                             }
+                            for (const attrName of panel.getAttributeNames()) {
+                                const val = panel.getAttribute(attrName);
+                                if (val && (val.includes('student-') || val.includes('qwiklabs-gcp-')))
+                                    return true;
+                            }
+                            if (panel.shadowRoot && hasCredentials(panel.shadowRoot))
+                                return true;
+
+                            if (panel.shadowRoot) {
+                                const allText = panel.shadowRoot.textContent || '';
+                                if (allText.includes('End Lab'))
+                                    return true;
+                                const btns = panel.shadowRoot.querySelectorAll('ql-lab-control-button, ql-button');
+                                for (const btn of btns) {
+                                    const t = btn.shadowRoot?.textContent || btn.textContent || '';
+                                    if (t.includes('End Lab'))
+                                        return true;
+                                }
+                            }
+                            const attr = panel.getAttribute('labcontrolbutton');
+                            if (attr) {
+                                try {
+                                    const s = JSON.parse(attr);
+                                    if (s.running || s.pending)
+                                        return true;
+                                    if (s.label && s.label.includes('End'))
+                                        return true;
+                                } catch {}
+                            }
+                            const timer = panel.getAttribute('labtimer');
+                            if (timer) {
+                                try {
+                                    const t = JSON.parse(timer);
+                                    if (t.ticking || t.secondsRemaining < 3600)
+                                        return true;
+                                } catch {}
+                            }
+                            return false;
+                        }, {
+                            timeout: 180000
+                        });
+                        labStarted = true;
+                        console.log('  ✔ Lab siap!');
+                    } catch {
+                        const hasConsoleLink = await page.locator('a').filter({
+                            hasText: 'Open Google Cloud console'
+                        }).isVisible().catch(() => false);
+                        const hasEndLab = await page.locator('text=End Lab').isVisible().catch(() => false);
+                        if (hasConsoleLink || hasEndLab) {
+                            labStarted = true;
+                            console.log('  ✔ Lab dimulai (terdeteksi dari konten halaman)!');
                         } else {
-                            console.log('  ✔ Tidak ada image challenge — reCAPTCHA auto-lolos!');
+                            console.log('  ✘ Tidak bisa konfirmasi lab start setelah 3 menit.');
+                            await page.screenshot({
+                                path: path.resolve(__dirname, "debug_start_lab.png"),
+                                fullPage: true
+                            });
                         }
                     }
-                }
-            }
 
-            console.log('\n┌─────────────────────────────────────────');
-            console.log('│  Step 5+6 — Tunggu Lab + Kredensial');
-            console.log('└─────────────────────────────────────────');
-            console.log('  ~ Menunggu lab berjalan & kredensial muncul...');
-            let labStarted = false;
+                    console.log('\n┌─────────────────────────────────────────');
+                    console.log('│  Step 6 — Ekstraksi Kredensial');
+                    console.log('└─────────────────────────────────────────');
+                    if (labStarted) {
+                        console.log('  → Mengekstrak info lab...');
 
-            try {
-                await page.waitForFunction(() => {
-                    const panel = document.querySelector('ql-lab-control-panel');
-                    if (!panel) return false;
+                        const extractAll = await page.evaluate(() => {
+                            function collectFromShadow(root, depth = 0) {
+                                const data = {
+                                    texts: [],
+                                    links: [],
+                                    inputs: []
+                                };
+                                if (!root || depth > 10)
+                                    return data;
 
-                    function hasCredentials(root, depth = 0) {
-                        if (!root || depth > 10) return false;
-                        for (const attrName of (root.host?.getAttributeNames?.() || [])) {
-                            const val = root.host.getAttribute(attrName);
-                            if (val && (val.includes('student-') || val.includes('qwiklabs-gcp-'))) return true;
-                        }
-                        const text = root.textContent || '';
-                        if (/student-[a-z0-9]+@/.test(text) || /qwiklabs-gcp-/.test(text)) return true;
-                        const els = root.querySelectorAll('*');
-                        for (const el of els) {
-                            if (el.shadowRoot && hasCredentials(el.shadowRoot, depth + 1)) return true;
-                        }
-                        return false;
-                    }
-                    for (const attrName of panel.getAttributeNames()) {
-                        const val = panel.getAttribute(attrName);
-                        if (val && (val.includes('student-') || val.includes('qwiklabs-gcp-'))) return true;
-                    }
-                    if (panel.shadowRoot && hasCredentials(panel.shadowRoot)) return true;
+                                const anchors = root.querySelectorAll('a');
+                                for (const a of anchors) {
+                                    if (a.href)
+                                        data.links.push({
+                                            href: a.href,
+                                            text: (a.textContent || '').trim()
+                                        });
+                                }
 
-                    if (panel.shadowRoot) {
-                        const allText = panel.shadowRoot.textContent || '';
-                        if (allText.includes('End Lab')) return true;
-                        const btns = panel.shadowRoot.querySelectorAll('ql-lab-control-button, ql-button');
-                        for (const btn of btns) {
-                            const t = btn.shadowRoot?.textContent || btn.textContent || '';
-                            if (t.includes('End Lab')) return true;
-                        }
-                    }
-                    const attr = panel.getAttribute('labcontrolbutton');
-                    if (attr) {
-                        try {
-                            const s = JSON.parse(attr);
-                            if (s.running || s.pending) return true;
-                            if (s.label && s.label.includes('End')) return true;
-                        } catch {}
-                    }
-                    const timer = panel.getAttribute('labtimer');
-                    if (timer) {
-                        try {
-                            const t = JSON.parse(timer);
-                            if (t.ticking || t.secondsRemaining < 3600) return true;
-                        } catch {}
-                    }
-                    return false;
-                }, { timeout: 180000 });
-                labStarted = true;
-                console.log('  ✔ Lab siap!');
-            } catch {
-                const hasConsoleLink = await page.locator('a').filter({ hasText: 'Open Google Cloud console' }).isVisible().catch(() => false);
-                const hasEndLab = await page.locator('text=End Lab').isVisible().catch(() => false);
-                if (hasConsoleLink || hasEndLab) {
-                    labStarted = true;
-                    console.log('  ✔ Lab dimulai (terdeteksi dari konten halaman)!');
-                } else {
-                    console.log('  ✘ Tidak bisa konfirmasi lab start setelah 3 menit.');
-                    await page.screenshot({ path: path.resolve(__dirname, "debug_start_lab.png"), fullPage: true });
-                }
-            }
+                                const inputs = root.querySelectorAll('input, [contenteditable]');
+                                for (const inp of inputs) {
+                                    const v = inp.value || inp.textContent || '';
+                                    if (v.trim())
+                                        data.inputs.push(v.trim());
+                                }
 
-            console.log('\n┌─────────────────────────────────────────');
-            console.log('│  Step 6 — Ekstraksi Kredensial');
-            console.log('└─────────────────────────────────────────');
-            if (labStarted) {
-                console.log('  → Mengekstrak info lab...');
+                                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+                                let node;
+                                while (node = walker.nextNode()) {
+                                    const t = node.textContent.trim();
+                                    if (t.length > 0)
+                                        data.texts.push(t);
+                                }
 
-                const extractAll = await page.evaluate(() => {
-                    function collectFromShadow(root, depth = 0) {
-                        const data = { texts: [], links: [], inputs: [] };
-                        if (!root || depth > 10) return data;
-
-                        const anchors = root.querySelectorAll('a');
-                        for (const a of anchors) {
-                            if (a.href) data.links.push({ href: a.href, text: (a.textContent || '').trim() });
-                        }
-
-                        const inputs = root.querySelectorAll('input, [contenteditable]');
-                        for (const inp of inputs) {
-                            const v = inp.value || inp.textContent || '';
-                            if (v.trim()) data.inputs.push(v.trim());
-                        }
-
-                        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
-                        let node;
-                        while (node = walker.nextNode()) {
-                            const t = node.textContent.trim();
-                            if (t.length > 0) data.texts.push(t);
-                        }
-
-                        const allEls = root.querySelectorAll('*');
-                        for (const el of allEls) {
-                            if (el.shadowRoot) {
-                                const sub = collectFromShadow(el.shadowRoot, depth + 1);
-                                data.texts.push(...sub.texts);
-                                data.links.push(...sub.links);
-                                data.inputs.push(...sub.inputs);
+                                const allEls = root.querySelectorAll('*');
+                                for (const el of allEls) {
+                                    if (el.shadowRoot) {
+                                        const sub = collectFromShadow(el.shadowRoot, depth + 1);
+                                        data.texts.push(...sub.texts);
+                                        data.links.push(...sub.links);
+                                        data.inputs.push(...sub.inputs);
+                                    }
+                                }
+                                return data;
                             }
-                        }
-                        return data;
-                    }
 
-                    const panel = document.querySelector('ql-lab-control-panel');
-                    if (!panel) return { texts: [], links: [], inputs: [], attrs: {} };
+                            const panel = document.querySelector('ql-lab-control-panel');
+                            if (!panel)
+                                return {
+                                    texts: [],
+                                    links: [],
+                                    inputs: [],
+                                    attrs: {}
+                                };
 
-                    const shadowData = panel.shadowRoot ? collectFromShadow(panel.shadowRoot) : { texts: [], links: [], inputs: [] };
+                            const shadowData = panel.shadowRoot ? collectFromShadow(panel.shadowRoot) : {
+                                texts: [],
+                                links: [],
+                                inputs: []
+                            };
 
-                    const pageLinks = [];
-                    for (const a of document.querySelectorAll('a')) {
-                        if (a.href && (a.href.includes('console.cloud.google') || a.textContent.includes('Google Cloud')))
-                            pageLinks.push({ href: a.href, text: (a.textContent || '').trim() });
-                    }
-                    shadowData.links.push(...pageLinks);
+                            const pageLinks = [];
+                            for (const a of document.querySelectorAll('a')) {
+                                if (a.href && (a.href.includes('console.cloud.google') || a.textContent.includes('Google Cloud')))
+                                    pageLinks.push({
+                                        href: a.href,
+                                        text: (a.textContent || '').trim()
+                                    });
+                            }
+                            shadowData.links.push(...pageLinks);
 
-                    const attrs = {};
-                    for (const attrName of panel.getAttributeNames()) {
-                        const val = panel.getAttribute(attrName);
-                        if (val && val.length < 5000) attrs[attrName] = val;
-                    }
-                    shadowData.attrs = attrs;
+                            const attrs = {};
+                            for (const attrName of panel.getAttributeNames()) {
+                                const val = panel.getAttribute(attrName);
+                                if (val && val.length < 5000)
+                                    attrs[attrName] = val;
+                            }
+                            shadowData.attrs = attrs;
 
-                    return shadowData;
-                });
+                            return shadowData;
+                        });
 
-                let consoleLink = null;
-                let username = null;
-                let labPassword = null;
-                let projectId = null;
+                        let consoleLink = null;
+                        let username = null;
+                        let labPassword = null;
+                        let projectId = null;
 
-                for (const link of extractAll.links) {
-                    if (link.href.includes('console.cloud.google') || link.text.includes('Open Google Cloud') || link.text.includes('Google Cloud console')) {
-                        consoleLink = link.href;
-                        break;
-                    }
-                }
-
-                const allTexts = [...extractAll.texts, ...extractAll.inputs];
-                for (const t of allTexts) {
-                    if (!username && /^student-/.test(t)) username = t.trim();
-                    if (!projectId && /^qwiklabs-gcp-/.test(t)) projectId = t.trim();
-                }
-
-                const LABEL_BLACKLIST = ['Username', 'Password', 'Project', 'Google', 'Continue', 'Authorize', 'Cancel', 'Start', 'Open', 'End', 'Get', 'Lab', 'Copy', 'Click', 'content_copy', 'content copy', 'file_copy', 'Project ID', 'Open Google Cloud console', 'Open Google Cloud Console', 'student-', 'qwiklabs-gcp-'];
-
-                for (let i = 0; i < allTexts.length; i++) {
-                    const label = allTexts[i].trim().replace(/:$/, '');
-                    if (/^Password$/i.test(label)) {
-                        for (let j = i + 1; j < Math.min(i + 6, allTexts.length); j++) {
-                            const candidate = allTexts[j].trim();
-                            if (candidate.length >= 3 && !LABEL_BLACKLIST.some(bl => candidate === bl || candidate.toLowerCase() === bl.toLowerCase() || candidate.startsWith(bl)) && !candidate.includes('student') && !candidate.includes('qwiklabs')) {
-                                labPassword = candidate;
-                                console.log(`  ✔ Password ditemukan via label-value (offset ${j - i}): ${labPassword}`);
+                        for (const link of extractAll.links) {
+                            if (link.href.includes('console.cloud.google') || link.text.includes('Open Google Cloud') || link.text.includes('Google Cloud console')) {
+                                consoleLink = link.href;
                                 break;
                             }
                         }
-                        if (labPassword) break;
+
+                        const allTexts = [...extractAll.texts, ...extractAll.inputs];
+                        for (const t of allTexts) {
+                            if (!username && /^student-/.test(t))
+                                username = t.trim();
+                            if (!projectId && /^qwiklabs-gcp-/.test(t))
+                                projectId = t.trim();
+                        }
+
+                        const LABEL_BLACKLIST = ['Username', 'Password', 'Project', 'Google', 'Continue', 'Authorize', 'Cancel', 'Start', 'Open', 'End', 'Get', 'Lab', 'Copy', 'Click', 'content_copy', 'content copy', 'file_copy', 'Project ID', 'Open Google Cloud console', 'Open Google Cloud Console', 'student-', 'qwiklabs-gcp-'];
+
+                        for (let i = 0; i < allTexts.length; i++) {
+                            const label = allTexts[i].trim().replace(/:$/, '');
+                            if (/^Password$/i.test(label)) {
+                                for (let j = i + 1; j < Math.min(i + 6, allTexts.length); j++) {
+                                    const candidate = allTexts[j].trim();
+                                    if (candidate.length >= 3 && !LABEL_BLACKLIST.some(bl => candidate === bl || candidate.toLowerCase() === bl.toLowerCase() || candidate.startsWith(bl)) && !candidate.includes('student') && !candidate.includes('qwiklabs')) {
+                                        labPassword = candidate;
+                                        console.log(`  ✔ Password ditemukan via label-value (offset ${j - i}): ${labPassword}`);
+                                        break;
+                                    }
+                                }
+                                if (labPassword)
+                                    break;
+                            }
+                        }
+
+                        if (!labPassword) {
+                            for (const t of allTexts) {
+                                const trimmed = t.trim();
+                                if (trimmed.length >= 8 && /[A-Za-z]/.test(trimmed) && /\d/.test(trimmed) && !/\s/.test(trimmed) && !trimmed.includes('student') && !trimmed.includes('qwiklabs') && !trimmed.startsWith('http') && !LABEL_BLACKLIST.some(word => trimmed === word || trimmed.toLowerCase() === word.toLowerCase())) {
+                                    labPassword = trimmed;
+                                    console.log(`  ✔ Password ditemukan via regex fallback: ${labPassword}`);
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!labPassword) {
+                            console.log(`  ✘ Password tidak ditemukan. Semua text nodes (${allTexts.length}):`);
+                            allTexts.forEach((t, i) => console.log(`    [${i}] "${t.trim()}"`));
+                        }
+
+                        const isValidPassword = (val) => {
+                            if (!val || typeof val !== 'string')
+                                return false;
+                            const v = val.trim();
+                            if (v.length < 3)
+                                return false;
+                            if (['Username', 'Password', 'Project ID', 'Project', 'Google', 'Lab'].includes(v))
+                                return false;
+                            if (v.includes('student-') || v.includes('qwiklabs-gcp-'))
+                                return false;
+                            return true;
+                        };
+
+                        if (extractAll.attrs) {
+                            console.log(`  → Memeriksa ${Object.keys(extractAll.attrs).length} panel attribute...`);
+                            for (const [key, val] of Object.entries(extractAll.attrs)) {
+                                try {
+                                    const parsed = JSON.parse(val);
+                                    if (typeof parsed === 'object' && parsed !== null) {
+                                        if (parsed.username && !username)
+                                            username = parsed.username;
+                                        if (parsed.password && !labPassword && isValidPassword(parsed.password)) {
+                                            labPassword = parsed.password;
+                                            console.log(`  ✔ Password dari attrs.password: ${labPassword}`);
+                                        }
+                                        if (parsed.projectId && !projectId)
+                                            projectId = parsed.projectId;
+                                        if (parsed.project_id && !projectId)
+                                            projectId = parsed.project_id;
+                                        if (parsed.student_email && !username)
+                                            username = parsed.student_email;
+                                        if (parsed.items && Array.isArray(parsed.items)) {
+                                            for (const item of parsed.items) {
+                                                if (item.key === 'username' || item.label === 'Username')
+                                                    username = username || item.value;
+                                                if ((item.key === 'password' || item.label === 'Password') && isValidPassword(item.value))
+                                                    labPassword = labPassword || item.value;
+                                                if (item.key === 'project_id' || item.label === 'Project ID')
+                                                    projectId = projectId || item.value;
+                                            }
+                                        }
+                                    }
+                                } catch {}
+                            }
+                        }
+
+                        console.log(`\n  ┌─ Hasil Ekstraksi ──────────────────────`);
+                        console.log(`  │  Console Link : ${consoleLink || 'tidak ditemukan'}`);
+                        console.log(`  │  Username     : ${username || 'tidak ditemukan'}`);
+                        console.log(`  │  Password     : ${labPassword || 'tidak ditemukan'}`);
+                        console.log(`  │  Project ID   : ${projectId || 'tidak ditemukan'}`);
+                        console.log(`  └────────────────────────────────────────`);
+
+                        const resultLines = [
+`=== Lab Results ===${new Date().toLocaleString('id-ID', {
+                                timeZone: 'Asia/Jakarta'
+                            })}===`,
+                            `Console Link: ${consoleLink || 'not found'}`, 
+                            `Username: ${username || 'not found'}`, 
+                            `Password: ${labPassword || 'not found'}`, 
+                            `Project ID: ${projectId || 'not found'}`, 
+`Lab URL: ${page.url()}`,
+                            '',
+                        ];
+                        const resultPath = path.resolve(__dirname, 'result.txt');
+                        fs.appendFileSync(resultPath, resultLines.join('\n') + '\n', 'utf-8');
+                        console.log('  ✔ Hasil disimpan ke result.txt');
+
+                        if (consoleLink) {
+                            const linkPath = path.resolve(__dirname, 'link.txt');
+                            fs.writeFileSync(linkPath, consoleLink + '\n', 'utf-8');
+                            console.log('  ✔ Console link ditulis ke link.txt');
+                        }
+
+                        let msg = '✅ <b>Lab Started Successfully!</b>\n\n';
+                        msg += `⏱ Lab is running\n`;
+                        if (consoleLink)
+                            msg += `\n🔗 <b>Console Link:</b>\n<code>${consoleLink}</code>\n`;
+                        if (username)
+                            msg += `\n👤 <b>Username:</b>\n<code>${username}</code>\n`;
+                        if (labPassword)
+                            msg += `\n🔑 <b>Password:</b>\n<code>${labPassword}</code>\n`;
+                        if (projectId)
+                            msg += `\n📁 <b>Project ID:</b>\n<code>${projectId}</code>\n`;
+
+                        await tgSendMessage(msg);
+                        console.log('  ✔ Info lab dikirim ke Telegram!');
+
+                        if (consoleLink) {
+                            await runCloudShell(context, consoleLink, password, projectId, username, labPassword);
+                        } else {
+                            console.log('  ✘ consoleLink tidak ditemukan, skip Cloud Shell.');
+                        }
+                    }
+
+                    console.log('\n┌─────────────────────────────────────────');
+                    console.log(`│  Selesai! (${label})`);
+                    console.log('└─────────────────────────────────────────');
+                    console.log(`  ✔ URL akhir: ${page.url()}`);
+
+                    await new Promise(r => setTimeout(r, 1000));
+                    return true;
+                }
+                catch (err) {
+                    console.error(`  ✘ Error [${email}]:`, err.message);
+                    const screenshotPath = path.resolve(__dirname, `error_${email.split('@')[0]}.png`);
+                    await page.screenshot({
+                        path: screenshotPath,
+                        fullPage: true
+                    }).catch(() => {});
+                    console.error(`  ⬡ Screenshot disimpan: ${screenshotPath}`);
+                    return false;
+                } finally {
+                    await context.close();
+                    console.log(`  ✔ Browser ditutup untuk ${email}`);
+                }
+            }
+
+            let loopCount = 0;
+            while (loopCount < maxLoops) {
+                loopCount++;
+                const loopLabel = maxLoops === Infinity ? `Loop ke-${loopCount}` : `Loop ${loopCount}/${maxLoops}`;
+                console.log(`\n${'█'.repeat(50)}`);
+                console.log(`  🔁 ${loopLabel} — ${selected.length} akun, ${threads} thread`);
+                console.log(`${'█'.repeat(50)}`);
+
+                const failedAccounts = [];
+
+                for (let i = 0; i < selected.length; i += threads) {
+                    const chunk = selected.slice(i, i + threads);
+                    console.log(`\n  → Batch ${Math.floor(i / threads) + 1}: ${chunk.map(a => a.email).join(', ')}`);
+                    const results = await Promise.all(
+                            chunk.map((acc, j) => processAccount(acc, `Akun ${i + j + 1}/${selected.length} [${loopLabel}]`)));
+                    results.forEach((ok, j) => {
+                        if (!ok) {
+                            failedAccounts.push(chunk[j]);
+                            console.log(`  ⚠ ${chunk[j].email} masuk antrian retry`);
+                        }
+                    });
+                    if (i + threads < selected.length) {
+                        console.log(`\n  ⏳ Jeda 5 detik sebelum batch berikutnya...`);
+                        await new Promise(r => setTimeout(r, 5000));
                     }
                 }
 
-                if (!labPassword) {
-                    for (const t of allTexts) {
-                        const trimmed = t.trim();
-                        if (trimmed.length >= 8 && /[A-Za-z]/.test(trimmed) && /\d/.test(trimmed) && !/\s/.test(trimmed) && !trimmed.includes('student') && !trimmed.includes('qwiklabs') && !trimmed.startsWith('http') && !LABEL_BLACKLIST.some(word => trimmed === word || trimmed.toLowerCase() === word.toLowerCase())) {
-                            labPassword = trimmed;
-                            console.log(`  ✔ Password ditemukan via regex fallback: ${labPassword}`);
-                            break;
+                if (failedAccounts.length > 0) {
+                    console.log(`\n${'═'.repeat(50)}`);
+                    console.log(`  🔄 RETRY: ${failedAccounts.length} akun gagal...`);
+                    console.log(`${'═'.repeat(50)}`);
+                    await tgSendMessage(`🔄 Retry ${failedAccounts.length} akun: ${failedAccounts.map(a => a.email).join(', ')}`);
+                    for (let i = 0; i < failedAccounts.length; i++) {
+                        console.log(`\n  ⏳ Jeda 10 detik sebelum retry...`);
+                        await new Promise(r => setTimeout(r, 10000));
+                        const ok = await processAccount(failedAccounts[i], `Retry ${i + 1}/${failedAccounts.length} [${loopLabel}]`);
+                        if (ok) {
+                            console.log(`  ✔ Retry berhasil: ${failedAccounts[i].email}`);
+                        } else {
+                            console.log(`  ✘ Retry gagal: ${failedAccounts[i].email} — skip.`);
+                            await tgSendMessage(`❌ ${failedAccounts[i].email} gagal setelah retry, skip.`);
                         }
                     }
                 }
 
-                if (!labPassword) {
-                    console.log(`  ✘ Password tidak ditemukan. Semua text nodes (${allTexts.length}):`);
-                    allTexts.forEach((t, i) => console.log(`    [${i}] "${t.trim()}"`));
-                }
-
-                const isValidPassword = (val) => {
-                    if (!val || typeof val !== 'string') return false;
-                    const v = val.trim();
-                    if (v.length < 3) return false;
-                    if (['Username', 'Password', 'Project ID', 'Project', 'Google', 'Lab'].includes(v)) return false;
-                    if (v.includes('student-') || v.includes('qwiklabs-gcp-')) return false;
-                    return true;
-                };
-
-                if (extractAll.attrs) {
-                    console.log(`  → Memeriksa ${Object.keys(extractAll.attrs).length} panel attribute...`);
-                    for (const [key, val] of Object.entries(extractAll.attrs)) {
-                        try {
-                            const parsed = JSON.parse(val);
-                            if (typeof parsed === 'object' && parsed !== null) {
-                                if (parsed.username && !username) username = parsed.username;
-                                if (parsed.password && !labPassword && isValidPassword(parsed.password)) {
-                                    labPassword = parsed.password;
-                                    console.log(`  ✔ Password dari attrs.password: ${labPassword}`);
-                                }
-                                if (parsed.projectId && !projectId) projectId = parsed.projectId;
-                                if (parsed.project_id && !projectId) projectId = parsed.project_id;
-                                if (parsed.student_email && !username) username = parsed.student_email;
-                                if (parsed.items && Array.isArray(parsed.items)) {
-                                    for (const item of parsed.items) {
-                                        if (item.key === 'username' || item.label === 'Username') username = username || item.value;
-                                        if ((item.key === 'password' || item.label === 'Password') && isValidPassword(item.value)) labPassword = labPassword || item.value;
-                                        if (item.key === 'project_id' || item.label === 'Project ID') projectId = projectId || item.value;
-                                    }
-                                }
-                            }
-                        } catch {}
-                    }
-                }
-
-                console.log(`\n  ┌─ Hasil Ekstraksi ──────────────────────`);
-                console.log(`  │  Console Link : ${consoleLink || 'tidak ditemukan'}`);
-                console.log(`  │  Username     : ${username || 'tidak ditemukan'}`);
-                console.log(`  │  Password     : ${labPassword || 'tidak ditemukan'}`);
-                console.log(`  │  Project ID   : ${projectId || 'tidak ditemukan'}`);
-                console.log(`  └────────────────────────────────────────`);
-
-                const resultLines = [
-                    `=== Lab Results ===${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })}===`,
-                    `Console Link: ${consoleLink || 'not found'}`, 
-                    `Username: ${username || 'not found'}`, 
-                    `Password: ${labPassword || 'not found'}`, 
-                    `Project ID: ${projectId || 'not found'}`, 
-                    `Lab URL: ${page.url()}`,
-                    '',
-                ];
-                const resultPath = path.resolve(__dirname, 'result.txt');
-                fs.appendFileSync(resultPath, resultLines.join('\n') + '\n', 'utf-8');
-                console.log('  ✔ Hasil disimpan ke result.txt');
-
-                if (consoleLink) {
-                    const linkPath = path.resolve(__dirname, 'link.txt');
-                    fs.writeFileSync(linkPath, consoleLink + '\n', 'utf-8');
-                    console.log('  ✔ Console link ditulis ke link.txt');
-                }
-
-                let msg = '✅ <b>Lab Started Successfully!</b>\n\n';
-                msg += `⏱ Lab is running\n`;
-                if (consoleLink) msg += `\n🔗 <b>Console Link:</b>\n<code>${consoleLink}</code>\n`;
-                if (username) msg += `\n👤 <b>Username:</b>\n<code>${username}</code>\n`;
-                if (labPassword) msg += `\n🔑 <b>Password:</b>\n<code>${labPassword}</code>\n`;
-                if (projectId) msg += `\n📁 <b>Project ID:</b>\n<code>${projectId}</code>\n`;
-
-                await tgSendMessage(msg);
-                console.log('  ✔ Info lab dikirim ke Telegram!');
-
-                if (consoleLink) {
-                    await runCloudShell(context, consoleLink, password, projectId, username, labPassword);
-                } else {
-                    console.log('  ✘ consoleLink tidak ditemukan, skip Cloud Shell.');
+                if (loopCount < maxLoops) {
+                    console.log(`\n  ⏳ Jeda 5 detik sebelum loop berikutnya...`);
+                    await new Promise(r => setTimeout(r, 5000));
                 }
             }
 
-            console.log('\n┌─────────────────────────────────────────');
-            console.log(`│  Selesai! (${label})`);
-            console.log('└─────────────────────────────────────────');
-            console.log(`  ✔ URL akhir: ${page.url()}`);
-
-            await new Promise(r => setTimeout(r, 1000));
-            return true;
-        } catch (err) {
-            console.error(`  ✘ Error [${email}]:`, err.message);
-            const screenshotPath = path.resolve(__dirname, `error_${email.split('@')[0]}.png`);
-            await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
-            console.error(`  ⬡ Screenshot disimpan: ${screenshotPath}`);
-            return false;
-        } finally {
-            await context.close();
-            console.log(`  ✔ Browser ditutup untuk ${email}`);
-        }
-    }
-
-    let loopCount = 0;
-    while (loopCount < maxLoops) {
-        loopCount++;
-        const loopLabel = maxLoops === Infinity ? `Loop ke-${loopCount}` : `Loop ${loopCount}/${maxLoops}`;
-        console.log(`\n${'█'.repeat(50)}`);
-        console.log(`  🔁 ${loopLabel} — ${selected.length} akun, ${threads} thread`);
-        console.log(`${'█'.repeat(50)}`);
-
-        const failedAccounts = [];
-
-        for (let i = 0; i < selected.length; i += threads) {
-            const chunk = selected.slice(i, i + threads);
-            console.log(`\n  → Batch ${Math.floor(i / threads) + 1}: ${chunk.map(a => a.email).join(', ')}`);
-            const results = await Promise.all(
-                chunk.map((acc, j) => processAccount(acc, `Akun ${i + j + 1}/${selected.length} [${loopLabel}]`))
-            );
-            results.forEach((ok, j) => {
-                if (!ok) {
-                    failedAccounts.push(chunk[j]);
-                    console.log(`  ⚠ ${chunk[j].email} masuk antrian retry`);
-                }
-            });
-            if (i + threads < selected.length) {
-                console.log(`\n  ⏳ Jeda 5 detik sebelum batch berikutnya...`);
-                await new Promise(r => setTimeout(r, 5000));
-            }
-        }
-
-        if (failedAccounts.length > 0) {
-            console.log(`\n${'═'.repeat(50)}`);
-            console.log(`  🔄 RETRY: ${failedAccounts.length} akun gagal...`);
-            console.log(`${'═'.repeat(50)}`);
-            await tgSendMessage(`🔄 Retry ${failedAccounts.length} akun: ${failedAccounts.map(a => a.email).join(', ')}`);
-            for (let i = 0; i < failedAccounts.length; i++) {
-                console.log(`\n  ⏳ Jeda 10 detik sebelum retry...`);
-                await new Promise(r => setTimeout(r, 10000));
-                const ok = await processAccount(failedAccounts[i], `Retry ${i + 1}/${failedAccounts.length} [${loopLabel}]`);
-                if (ok) {
-                    console.log(`  ✔ Retry berhasil: ${failedAccounts[i].email}`);
-                } else {
-                    console.log(`  ✘ Retry gagal: ${failedAccounts[i].email} — skip.`);
-                    await tgSendMessage(`❌ ${failedAccounts[i].email} gagal setelah retry, skip.`);
-                }
-            }
-        }
-
-        if (loopCount < maxLoops) {
-            console.log(`\n  ⏳ Jeda 5 detik sebelum loop berikutnya...`);
-            await new Promise(r => setTimeout(r, 5000));
-        }
-    }
-
-    console.log('\n  ✔ Semua loop selesai diproses.');
-})();
+            console.log('\n  ✔ Semua loop selesai diproses.');
+        })();
