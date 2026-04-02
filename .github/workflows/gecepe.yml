@@ -1,0 +1,79 @@
+name: Automation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      max-parallel: 3
+      fail-fast: false
+      matrix:
+        job_id: [1, 2, 3]
+
+    env:
+      JOB_COUNT: 3
+      CURRENT_JOB: ${{ matrix.job_id }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install System Dependencies (Xvfb)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+
+      - name: Install Node Dependencies
+        run: npm install
+
+      - name: Install Python Dependencies
+        run: |
+          pip install playwright
+          playwright install chromium
+
+      - name: Install Playwright Browsers (Node)
+        run: npx playwright install chromium
+
+      - name: Execute Account Creator (Python)
+        # Menjalankan Python menggunakan simulasi layar Xvfb
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" python create.py
+
+      - name: Execute Lab Automation (Node)
+        # Menjalankan Node menggunakan simulasi layar Xvfb
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm start
+
+  # Job terpisah yang hanya berjalan jika seluruh matrix 'run' sukses
+  trigger-next:
+    needs: run
+    if: success()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Trigger Workflow Again
+        env:
+          # WAJIB: GITHUB_TOKEN bawaan akan memblokir trigger rekursif.
+          # Buat PAT (Classic) dengan akses 'repo' dan 'workflow', simpan di Secrets sebagai PAT_TOKEN
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
+        run: |
+          gh workflow run "Railway Automation" --ref main
