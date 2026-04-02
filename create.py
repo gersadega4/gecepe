@@ -6,19 +6,30 @@ import imaplib
 import email
 import re
 import time
+import urllib.parse
 from playwright.async_api import async_playwright
 
-EMAIL_DOMAIN = "masvy.my.id"
-GMAIL_USERNAME = "maximus.sale1@gmail.com"
+# === KONFIGURASI EMAIL BARU ===
+GMAIL_BASE = "maximus.sale1"
+GMAIL_DOMAIN = "gmail.com"
+GMAIL_USERNAME = "maximus.sale1@gmail.com" # Digunakan untuk login IMAP
 GMAIL_PASSWORD = "etnv ileo azii egtb"
 
 def generate_random_name(length=7):
     return ''.join(random.choices(string.ascii_letters, k=length)).capitalize()
 
 def generate_random_email():
-    name = generate_random_name(6).lower()
-    alphanum = ''.join(random.choices(string.ascii_lowercase + string.digits, k=random.randint(8, 12)))
-    return f"{name}_{alphanum}@{EMAIL_DOMAIN}"
+    """
+    Menghasilkan email dengan fitur Gmail Plus Addressing.
+    Contoh output: maximus.sale1+anjay123@gmail.com
+    """
+    # Menentukan panjang string acak antara 5 sampai 12 karakter
+    length = random.randint(5, 12)
+    # Menghasilkan string acak (kombinasi huruf kecil dan angka)
+    random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+    
+    # Merangkai email dengan format [BASE]+[SUFFIX]@[DOMAIN]
+    return f"{GMAIL_BASE}+{random_suffix}@{GMAIL_DOMAIN}"
 
 async def type_like_human(page, selector, text):
     await page.locator(selector).wait_for(state="visible")
@@ -83,15 +94,54 @@ def get_confirmation_link(username, password, target_email):
         print(f"  ✘ IMAP Error Detail: {e}")
     return None
 
+# === FUNGSI BARU: Mengambil dan Memparsing Proxy dari File ===
+def get_proxy(file_path="proxy.txt"):
+    if not os.path.exists(file_path):
+        return None
+    
+    with open(file_path, "r") as f:
+        # Baca per baris, abaikan baris kosong atau baris komentar (#)
+        lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+    
+    if not lines:
+        return None
+        
+    # Mengambil satu proxy secara acak (berguna jika ada banyak baris)
+    raw_proxy = random.choice(lines)
+    
+    try:
+        # Memecah format http://user:pass@host:port untuk Playwright
+        parsed = urllib.parse.urlparse(raw_proxy)
+        proxy_dict = {
+            "server": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}",
+        }
+        # Masukkan kredensial jika ada
+        if parsed.username and parsed.password:
+            proxy_dict["username"] = urllib.parse.unquote(parsed.username)
+            proxy_dict["password"] = urllib.parse.unquote(parsed.password)
+            
+        return proxy_dict
+    except Exception as e:
+        print(f"  ⚠ Gagal memparsing proxy: {e}")
+        return None
+
 async def main():
     extension_path = os.path.abspath("Humans")
     user_data_dir = os.path.abspath("./chrome_profile")
+    
+    # --- Panggil dan siapkan proxy ---
+    proxy_config = get_proxy()
+    if proxy_config:
+        print(f"  -> Menjalankan browser DENGAN Proxy: {proxy_config['server']}")
+    else:
+        print("  -> Menjalankan browser TANPA Proxy (Gunakan IP Lokal).")
     
     async with async_playwright() as p:
         browser = await p.chromium.launch_persistent_context(
             user_data_dir,
             headless=False,
             no_viewport=True, 
+            proxy=proxy_config,  # <--- INJEKSI PROXY DI SINI
             args=[
                 "--start-maximized", 
                 f"--disable-extensions-except={extension_path}",
@@ -200,39 +250,57 @@ async def main():
 
         if bframe:
             print("  -> Image challenge muncul — memicu ekstensi 'Humans'...")
-            try:
-                ext_button = bframe.locator('.help-button-holder').first
-                await ext_button.wait_for(state="visible", timeout=10000)
-                await ext_button.click()
-                print("  ✔ Tombol ekstensi diklik, menunggu proses bypass (Maks 25 detik)...")
+            max_retries = 3
+            success = False
+            
+            for attempt in range(1, max_retries + 1):
+                try:
+                    ext_button = bframe.locator('.help-button-holder').first
+                    await ext_button.wait_for(state="visible", timeout=10000)
+                    await ext_button.click()
+                    print(f"  ✔ [Attempt {attempt}] Tombol ekstensi diklik, menunggu bypass (Maks 20 detik)...")
 
-                success = False
-                for _ in range(50):
-                    await asyncio.sleep(0.5)
-                    try:
-                        token = await page.evaluate('document.getElementById("g-recaptcha-response")?.value')
-                        if token:
-                            print("  ✔ Sukses! Token reCAPTCHA terdeteksi di latar belakang.")
-                            success = True
-                            break
-                    except: pass
+                    success = False
+                    for _ in range(40): # Loop 20 detik
+                        await asyncio.sleep(0.5)
+                        try:
+                            token = await page.evaluate('document.getElementById("g-recaptcha-response")?.value')
+                            if token:
+                                print("  ✔ Sukses! Token reCAPTCHA terdeteksi di latar belakang.")
+                                success = True
+                                break
+                        except: pass
+                        
+                        try:
+                            for af in page.frames:
+                                if "recaptcha" in af.url and "anchor" in af.url and "invisible" not in af.url:
+                                    is_checked = await af.evaluate('document.querySelector("#recaptcha-anchor")?.getAttribute("aria-checked") === "true"')
+                                    if is_checked:
+                                        print("  ✔ Sukses! Centang hijau reCAPTCHA terverifikasi.")
+                                        success = True
+                                        break
+                            if success:
+                                break
+                        except: pass
+
+                    if success:
+                        break # Jika sukses, keluar dari loop retry
+                    else:
+                        print(f"  ✘ [Attempt {attempt}] Waktu tunggu habis. Ekstensi gagal ngesolve.")
+                        if attempt < max_retries:
+                            print("  -> Mencoba reload CAPTCHA...")
+                            try:
+                                reload_btn = bframe.locator('#recaptcha-reload-button').first
+                                await reload_btn.click(timeout=5000)
+                                await asyncio.sleep(3) # Tunggu gambar baru termuat sebelum loop mengulang klik ekstensi
+                            except Exception as err:
+                                print(f"  ⚠ Gagal klik tombol reload: {str(err)[:50]}")
+                except Exception as e:
+                    print(f"  ✘ Gagal memicu ekstensi: {str(e)[:80]}")
                     
-                    try:
-                        for af in page.frames:
-                            if "recaptcha" in af.url and "anchor" in af.url and "invisible" not in af.url:
-                                is_checked = await af.evaluate('document.querySelector("#recaptcha-anchor")?.getAttribute("aria-checked") === "true"')
-                                if is_checked:
-                                    print("  ✔ Sukses! Centang hijau reCAPTCHA terverifikasi.")
-                                    success = True
-                                    break
-                        if success:
-                            break
-                    except: pass
-
-                if not success:
-                    print("  ✘ Waktu tunggu habis. Ekstensi mungkin gagal.")
-            except Exception as e:
-                print(f"  ✘ Gagal memicu ekstensi: {str(e)[:80]}")
+            if not success:
+                print("  ✘ Gagal melewati reCAPTCHA setelah 3 kali percobaan.")
+                # Anda bisa menambahkan exception di sini agar tidak memaksakan klik Create Account
         else:
             print("  ✔ Tidak ada tantangan gambar yang muncul di layar (Auto-pass).")
 
