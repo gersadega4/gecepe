@@ -34,7 +34,7 @@ def get_confirmation_link(username, password, target_email):
         mail.select("inbox")
         
         # Polling selama 60 detik
-        for attempt in range(1, 19):
+        for attempt in range(1, 61):
             # Mencari email dari noreply@skills.google dengan subjek tertentu
             # Kita hilangkan kriteria UNSEEN agar lebih pasti ketemu
             search_query = '(FROM "noreply@skills.google" SUBJECT "Welcome to Google Skills")'
@@ -43,7 +43,7 @@ def get_confirmation_link(username, password, target_email):
             if status == "OK" and messages[0]:
                 mail_ids = messages[0].split()
                 # Cek 3 email terbaru saja untuk efisiensi
-                for m_id in reversed(mail_ids[-15:]):
+                for m_id in reversed(mail_ids[-50:]):
                     _, msg_data = mail.fetch(m_id, "(RFC822)")
                     for response_part in msg_data:
                         if isinstance(response_part, tuple):
