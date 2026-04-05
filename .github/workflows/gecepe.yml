@@ -20,12 +20,20 @@ jobs:
     env:
       JOB_COUNT: 3
       CURRENT_JOB: ${{ matrix.job_id }}
+      # Tetap dideklarasikan di sini sebagai fallback
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+
+      # --- INJEKSI SOLUSI: Membuat file .env fisik secara dinamis ---
+      - name: Generate .env File Dynamically
+        run: |
+          echo "TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}" >> .env
+          echo "TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}" >> .env
+      # --------------------------------------------------------------
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -54,15 +62,14 @@ jobs:
         run: npx playwright install chromium
 
       - name: Execute Account Creator (Python)
-        # Menjalankan Python menggunakan simulasi layar Xvfb
+        # Menjalankan Python dengan resolusi layar lebar agar elemen tidak bertumpuk
         run: xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python create.py
 
       - name: Execute Lab Automation (Node)
-        # Menjalankan Node menggunakan simulasi layar Xvfb
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm start
+        # Menyamakan resolusi layar Xvfb untuk Node.js agar konsisten
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" npm start
 
-  # Job terpisah yang berjalan jika matrix 'run' selesai (baik sukses maupun ada yang gagal),
-  # KECUALI jika workflow dibatalkan (cancelled) secara manual oleh user.
+  # Job terpisah yang berjalan jika matrix 'run' selesai
   trigger-next:
     needs: run
     if: always() && !cancelled()
@@ -73,8 +80,6 @@ jobs:
 
       - name: Trigger Workflow Again
         env:
-          # WAJIB: GITHUB_TOKEN bawaan akan memblokir trigger rekursif.
-          # Buat PAT (Classic) dengan akses 'repo' dan 'workflow', simpan di Secrets sebagai PAT_TOKEN
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           gh workflow run "Railway Automation" --ref main
