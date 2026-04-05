@@ -55,7 +55,7 @@ jobs:
 
       - name: Execute Account Creator (Python)
         # Menjalankan Python menggunakan simulasi layar Xvfb
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" python create.py
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" python create.py
 
       - name: Execute Lab Automation (Node)
         # Menjalankan Node menggunakan simulasi layar Xvfb
