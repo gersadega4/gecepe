@@ -2,124 +2,136 @@ import asyncio
 import random
 import string
 import os
-import imaplib
-import email
 import re
 import time
 import urllib.parse
+import html
 from playwright.async_api import async_playwright
 
-# === KONFIGURASI EMAIL BARU ===
-GMAIL_BASE = "maximus.sale1"
-GMAIL_DOMAIN = "gmail.com"
-GMAIL_USERNAME = "maximus.sale1@gmail.com" # Digunakan untuk login IMAP
-GMAIL_PASSWORD = "etnv ileo azii egtb"
+# === FUNGSI BARU: Membaca Domain dari File ===
+def get_domains(file_path="domain.txt"):
+    """
+    Membaca domain dari file TXT. 
+    Secara otomatis membuat file dan memberikan fallback jika file tidak ada.
+    """
+    fallback_domains = ["hotmailvip.tokyo", "d4ngerssquy.info"]
+    
+    if not os.path.exists(file_path):
+        print(f"  ⚠ File {file_path} tidak ditemukan. Membuat file baru dengan domain bawaan...")
+        try:
+            with open(file_path, "w") as f:
+                for d in fallback_domains:
+                    f.write(f"{d}\n")
+        except Exception as e:
+            print(f"  ✘ Gagal membuat file {file_path}: {e}")
+        return fallback_domains
+
+    with open(file_path, "r") as f:
+        # Membaca file, membuang spasi/newline (.strip()), dan mengabaikan baris kosong
+        domains = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+
+    if not domains:
+        print(f"  ⚠ File {file_path} kosong! Menggunakan domain fallback.")
+        return fallback_domains
+
+    return domains
+
+# Inisialisasi daftar domain saat skrip dimuat
+DOMAINS_LIST = get_domains()
 
 def generate_random_name(length=7):
     return ''.join(random.choices(string.ascii_letters, k=length)).capitalize()
 
 def generate_random_email():
     """
-    Menghasilkan email dengan fitur Gmail Plus Addressing.
-    Contoh output: maximus.sale1+anjay123@gmail.com
+    Menghasilkan email acak dengan memanggil domain dari variabel global DOMAINS_LIST.
     """
-    # Menentukan panjang string acak antara 5 sampai 12 karakter
-    length = random.randint(5, 12)
-    # Menghasilkan string acak (kombinasi huruf kecil dan angka)
-    random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
-    
-    # Merangkai email dengan format [BASE]+[SUFFIX]@[DOMAIN]
-    return f"{GMAIL_BASE}+{random_suffix}@{GMAIL_DOMAIN}"
+    length = random.randint(7, 12)
+    random_user = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+    domain = random.choice(DOMAINS_LIST)
+    return f"{random_user}@{domain}"
 
 async def type_like_human(page, selector, text):
     await page.locator(selector).wait_for(state="visible")
     await page.locator(selector).click()
     await page.keyboard.type(text, delay=random.randint(30, 100))
 
-# === FUNGSI BARU: Mengambil Link Verifikasi via IMAP ===
-def get_confirmation_link(username, password, target_email):
+# === FUNGSI BARU: Mengambil Link Verifikasi via Web (generator.email) ===
+async def get_confirmation_link_web(context, target_email):
+    """
+    Membuka tab baru, mengakses generator.email, dan melakukan polling
+    hingga email konfirmasi ditemukan, mendukung format link raw maupun redirect Google.
+    """
+    page = await context.new_page()
     try:
-        print(f"  -> Menghubungkan ke IMAP untuk mencari email tujuan: {target_email}")
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(username, password)
-        mail.select("inbox")
+        print(f"  -> Membuka tab baru untuk cek inbox: {target_email}")
         
-        # Polling selama 60 detik
-        for attempt in range(1, 61):
-            # Mencari email dari noreply@skills.google dengan subjek tertentu
-            # Kita hilangkan kriteria UNSEEN agar lebih pasti ketemu
-            search_query = '(FROM "noreply@skills.google" SUBJECT "Welcome to Google Skills")'
-            status, messages = mail.search(None, search_query)
+        # Injeksi cookie 'embx' (sering dibutuhkan generator.email untuk me-load inbox spesifik)
+        await context.add_cookies([{
+            "name": "embx", 
+            "value": f"[%22{target_email}%22]", 
+            "domain": ".generator.email", 
+            "path": "/"
+        }])
+        
+        await page.goto(f"https://generator.email/{target_email}", wait_until="domcontentloaded")
+        
+        # Polling selama 60 detik (12 percobaan x 5 detik)
+        for attempt in range(1, 13):
+            print(f"     (Percobaan {attempt}/12): Memindai halaman kotak masuk...")
             
-            if status == "OK" and messages[0]:
-                mail_ids = messages[0].split()
-                # Cek 3 email terbaru saja untuk efisiensi
-                for m_id in reversed(mail_ids[-50:]):
-                    _, msg_data = mail.fetch(m_id, "(RFC822)")
-                    for response_part in msg_data:
-                        if isinstance(response_part, tuple):
-                            msg = email.message_from_bytes(response_part[1])
-                            
-                            # Ambil isi email (mendukung multipart)
-                            content = ""
-                            if msg.is_multipart():
-                                for part in msg.walk():
-                                    if part.get_content_type() in ["text/plain", "text/html"]:
-                                        payload = part.get_payload(decode=True).decode(errors="ignore")
-                                        content += payload
-                            else:
-                                content = msg.get_payload(decode=True).decode(errors="ignore")
-                            
-                            # Verifikasi apakah email ini ditujukan untuk akun yang baru dibuat
-                            # Berdasarkan file .eml, alamat email muncul di dalam teks body [cite: 28]
-                            if target_email.lower() in content.lower() or target_email.lower() in msg.get("To", "").lower():
-                                # Regex untuk mengambil link konfirmasi murni 
-                                link_pattern = r'https://www\.skills\.google/users/confirmation\?confirmation_token=[^"\'\s&>]+'
-                                match = re.search(link_pattern, content)
-                                
-                                if match:
-                                    link = match.group(0)
-                                    # Tambahkan locale jika tidak ada untuk memastikan validitas
-                                    if "locale=" not in link:
-                                        link += "&locale=en"
-                                    
-                                    mail.logout()
-                                    return link
+            # Ambil seluruh source HTML halaman
+            content = await page.content()
             
-            print(f"     (Percobaan {attempt}/12): Email belum ditemukan, menunggu 5 detik...")
-            time.sleep(5)
+            # Pola 1: Format link redirect Google (Sesuai log error terbaru)
+            link_pattern_redirect = r'https://notifications\.googleapis\.com/email/redirect\?[^"\'\s>]+'
             
-        mail.logout()
+            # Pola 2: Format link murni (Sebagai backup)
+            link_pattern_raw = r'https://www\.skills\.google/users/confirmation\?confirmation_token=[^"\'\s&>]+'
+            
+            # Coba cari pola redirect terlebih dahulu
+            match = re.search(link_pattern_redirect, content)
+            
+            # Jika tidak ada, coba cari pola murni
+            if not match:
+                match = re.search(link_pattern_raw, content)
+            
+            if match:
+                # Membersihkan entitas HTML (misal: merubah &amp; kembali menjadi &)
+                raw_link = html.unescape(match.group(0))
+                
+                # Hanya tambahkan parameter locale jika itu adalah tautan murni (bukan redirect)
+                if "skills.google" in raw_link and "locale=" not in raw_link:
+                    raw_link += "&locale=en"
+                    
+                print("  ✔ Tautan verifikasi ditemukan di kotak masuk!")
+                return raw_link
+            
+            # Jika belum ketemu, refresh halaman
+            await asyncio.sleep(5)
+            await page.reload(wait_until="domcontentloaded")
+            
     except Exception as e:
-        print(f"  ✘ IMAP Error Detail: {e}")
+        print(f"  ✘ Error Scraping Web Email: {e}")
+    finally:
+        await page.close() # Pastikan tab ekstra selalu ditutup
+        
     return None
 
-# === FUNGSI BARU: Mengambil dan Memparsing Proxy dari File ===
 def get_proxy(file_path="proxy.txt"):
     if not os.path.exists(file_path):
         return None
-    
     with open(file_path, "r") as f:
-        # Baca per baris, abaikan baris kosong atau baris komentar (#)
         lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
-    
     if not lines:
         return None
-        
-    # Mengambil satu proxy secara acak (berguna jika ada banyak baris)
     raw_proxy = random.choice(lines)
-    
     try:
-        # Memecah format http://user:pass@host:port untuk Playwright
         parsed = urllib.parse.urlparse(raw_proxy)
-        proxy_dict = {
-            "server": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}",
-        }
-        # Masukkan kredensial jika ada
+        proxy_dict = {"server": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}"}
         if parsed.username and parsed.password:
             proxy_dict["username"] = urllib.parse.unquote(parsed.username)
             proxy_dict["password"] = urllib.parse.unquote(parsed.password)
-            
         return proxy_dict
     except Exception as e:
         print(f"  ⚠ Gagal memparsing proxy: {e}")
@@ -129,19 +141,18 @@ async def main():
     extension_path = os.path.abspath("Humans")
     user_data_dir = os.path.abspath("./chrome_profile")
     
-    # --- Panggil dan siapkan proxy ---
     proxy_config = get_proxy()
     if proxy_config:
         print(f"  -> Menjalankan browser DENGAN Proxy: {proxy_config['server']}")
     else:
-        print("  -> Menjalankan browser TANPA Proxy (Gunakan IP Lokal).")
+        print("  -> Menjalankan browser TANPA Proxy.")
     
     async with async_playwright() as p:
-        browser = await p.chromium.launch_persistent_context(
+        browser_context = await p.chromium.launch_persistent_context(
             user_data_dir,
             headless=False,
             no_viewport=True, 
-            proxy=proxy_config,  # <--- INJEKSI PROXY DI SINI
+            proxy=proxy_config,
             args=[
                 "--start-maximized", 
                 f"--disable-extensions-except={extension_path}",
@@ -150,8 +161,8 @@ async def main():
             ]
         )
         
-        pages = browser.pages
-        page = pages[0] if pages else await browser.new_page()
+        pages = browser_context.pages
+        page = pages[0] if pages else await browser_context.new_page()
         
         print("Membuka halaman pendaftaran...")
         await page.goto("https://www.skills.google/users/sign_up")
@@ -161,49 +172,32 @@ async def main():
         await page.locator("#use-email-and-password-button").click()
         await asyncio.sleep(2)
         
-        print("Step 2: Input First Name")
+        print("Step 2-5: Input Data Diri")
         first_name = generate_random_name()
-        await type_like_human(page, "#user_first_name", first_name)
-        await asyncio.sleep(1.5)
-        
-        print("Step 3: Input Last Name")
         last_name = generate_random_name()
-        await type_like_human(page, "#user_last_name", last_name)
-        await asyncio.sleep(1.5)
+        company = generate_random_name()
+        email_address = generate_random_email()
         
-        print("Step 4: Input Email")
-        email_address = generate_random_email() # Variabel diubah agar tidak bentrok dengan modul 'email'
+        await type_like_human(page, "#user_first_name", first_name)
+        await type_like_human(page, "#user_last_name", last_name)
         await type_like_human(page, "#user_email", email_address)
         print(f"  -> Email yang dipakai: {email_address}")
-        await asyncio.sleep(1.5)
-        
-        print("Step 5: Input Company")
-        company = generate_random_name()
         await type_like_human(page, "#user_company_name", company)
-        await asyncio.sleep(1.5)
         
-        print("Step 6: Input Passwords")
+        print("Step 6: Input Passwords & DOB")
         await type_like_human(page, "#user_password", "Blink1997")
-        await asyncio.sleep(1)
         await type_like_human(page, "#user_password_confirmation", "Blink1997")
-        await asyncio.sleep(2)
         
-        print("Step 6.5: Input Date of Birth")
-        random_day = str(random.randint(1, 31))
-        await type_like_human(page, "#dob_day", random_day)
-        await asyncio.sleep(1)
-        
+        random_day = str(random.randint(1, 28))
         random_year = str(random.randint(1926, 2000))
+        await type_like_human(page, "#dob_day", random_day)
         await type_like_human(page, "#dob_year", random_year)
         await asyncio.sleep(2)
         
-        print("Step 7: Scrolling untuk memicu DOM reCAPTCHA...")
+        print("Step 7 & 8: Menangani reCAPTCHA...")
         await page.keyboard.press("PageDown")
         await asyncio.sleep(1)
-        await page.keyboard.press("PageDown")
-        await asyncio.sleep(2)
-
-        print("  -> Mencari iframe reCAPTCHA dan klik checkbox...")
+        
         clicked = False
         for frame in page.frames:
             url = frame.url
@@ -211,13 +205,11 @@ async def main():
                 try:
                     checkbox = frame.locator("#recaptcha-anchor, .recaptcha-checkbox-border").first
                     await checkbox.wait_for(state="visible", timeout=5000)
-                    await asyncio.sleep(random.uniform(0.5, 1.5))
                     await checkbox.click()
                     print("  ✔ Checkbox reCAPTCHA diklik via frame object!")
                     clicked = True
                     break
-                except Exception as e:
-                    pass
+                except Exception: pass
 
         if not clicked:
             try:
@@ -225,23 +217,18 @@ async def main():
                 count = await iframes.count()
                 for i in range(count):
                     src = await iframes.nth(i).get_attribute("src")
-                    if src and "invisible" in src:
-                        continue
+                    if src and "invisible" in src: continue
                     try:
                         frame_loc = page.frame_locator(f'iframe[src="{src}"]')
                         checkbox = frame_loc.locator("#recaptcha-anchor").first
                         await checkbox.click(timeout=5000)
-                        print(f"  ✔ Checkbox diklik via locator (iframe {i})!")
                         clicked = True
                         break
-                    except Exception:
-                        continue
-            except Exception as e:
-                pass
+                    except Exception: continue
+            except Exception: pass
 
         await asyncio.sleep(3) 
         
-        print("Step 8: Memeriksa dan memicu ekstensi Humans...")
         bframe = None
         for f in page.frames:
             if "bframe" in f.url:
@@ -249,105 +236,71 @@ async def main():
                 break
 
         if bframe:
-            print("  -> Image challenge muncul — memicu ekstensi 'Humans'...")
-            max_retries = 3
-            success = False
-            
-            for attempt in range(1, max_retries + 1):
+            print("  -> Memicu ekstensi 'Humans'...")
+            for attempt in range(1, 4):
                 try:
                     ext_button = bframe.locator('.help-button-holder').first
                     await ext_button.wait_for(state="visible", timeout=10000)
                     await ext_button.click()
-                    print(f"  ✔ [Attempt {attempt}] Tombol ekstensi diklik, menunggu bypass (Maks 20 detik)...")
-
+                    
                     success = False
-                    for _ in range(40): # Loop 20 detik
+                    for _ in range(40):
                         await asyncio.sleep(0.5)
                         try:
                             token = await page.evaluate('document.getElementById("g-recaptcha-response")?.value')
-                            if token:
-                                print("  ✔ Sukses! Token reCAPTCHA terdeteksi di latar belakang.")
-                                success = True
-                                break
+                            if token: success = True; break
                         except: pass
                         
                         try:
                             for af in page.frames:
                                 if "recaptcha" in af.url and "anchor" in af.url and "invisible" not in af.url:
                                     is_checked = await af.evaluate('document.querySelector("#recaptcha-anchor")?.getAttribute("aria-checked") === "true"')
-                                    if is_checked:
-                                        print("  ✔ Sukses! Centang hijau reCAPTCHA terverifikasi.")
-                                        success = True
-                                        break
-                            if success:
-                                break
+                                    if is_checked: success = True; break
+                            if success: break
                         except: pass
 
-                    if success:
-                        break # Jika sukses, keluar dari loop retry
+                    if success: break
                     else:
-                        print(f"  ✘ [Attempt {attempt}] Waktu tunggu habis. Ekstensi gagal ngesolve.")
-                        if attempt < max_retries:
-                            print("  -> Mencoba reload CAPTCHA...")
+                        if attempt < 3:
                             try:
                                 reload_btn = bframe.locator('#recaptcha-reload-button').first
                                 await reload_btn.click(timeout=5000)
-                                await asyncio.sleep(3) # Tunggu gambar baru termuat sebelum loop mengulang klik ekstensi
-                            except Exception as err:
-                                print(f"  ⚠ Gagal klik tombol reload: {str(err)[:50]}")
-                except Exception as e:
-                    print(f"  ✘ Gagal memicu ekstensi: {str(e)[:80]}")
-                    
-            if not success:
-                print("  ✘ Gagal melewati reCAPTCHA setelah 3 kali percobaan.")
-                # Anda bisa menambahkan exception di sini agar tidak memaksakan klik Create Account
-        else:
-            print("  ✔ Tidak ada tantangan gambar yang muncul di layar (Auto-pass).")
-
+                                await asyncio.sleep(3)
+                            except: pass
+                except Exception: pass
+        
         await asyncio.sleep(2)
 
-        # === Step 9: Klik Create account ===
         print("Step 9: Klik Create account")
         create_btn = page.locator("button[data-analytics-action='clicked_create_account']").first
         await create_btn.scroll_into_view_if_needed()
         await create_btn.wait_for(state="visible")
         await create_btn.click()
-        print("  ✔ Tombol Create Account diklik.")
-
-        # === Step 10: Verifikasi Email via IMAP (Full Revised) ===
-        print("Step 10: Menunggu email verifikasi masuk ke Gmail (Maks 60 detik)...")
         
-        # Jeda awal 7 detik untuk memberi waktu bagi sistem forwarding email
+        # === Step 10: Verifikasi via Web ===
+        print("Step 10: Menunggu sistem mengirim email (Jeda 7 detik)...")
         await asyncio.sleep(7) 
         
-        # Memanggil fungsi IMAP di thread terpisah agar Playwright tetap responsif
-        link_verifikasi = await asyncio.to_thread(get_confirmation_link, GMAIL_USERNAME, GMAIL_PASSWORD, email_address)
+        # Memanggil fungsi scraper web dengan melemparkan browser_context
+        link_verifikasi = await get_confirmation_link_web(browser_context, email_address)
 
         if link_verifikasi:
-            print(f"  ✔ Link verifikasi ditemukan: {link_verifikasi}")
-            print("  -> Membuka link verifikasi di tab yang sama...")
-            
-            # Membuka link verifikasi di tab browser yang aktif
+            print(f"  ✔ Mengeksekusi link verifikasi...")
             await page.goto(link_verifikasi)
-            
-            # Menunggu hingga halaman verifikasi termuat sepenuhnya (networkidle)
             await page.wait_for_load_state("networkidle")
-            print("  ✔ Halaman verifikasi berhasil dimuat.")
             
-            # Simpan detail akun (Email dan Password) ke file akun.txt
             try:
                 with open("akun.txt", "a") as file:
                     file.write(f"{email_address}:Blink1997\n")
-                print(f"  ✔ Akun {email_address} berhasil diverifikasi dan disimpan ke akun.txt")
+                print(f"  ✔ Akun {email_address} diverifikasi & disimpan ke akun.txt")
             except Exception as e:
-                print(f"  ✘ Gagal menyimpan ke akun.txt: {e}")
+                print(f"  ✘ Gagal menyimpan ke file: {e}")
         else:
-            print("  ✘ Gagal mendapatkan link verifikasi. Waktu tunggu habis atau email tidak ditemukan.")
+            print("  ✘ Gagal verifikasi: Waktu tunggu habis / Link tidak ditemukan di generator.email.")
 
-        # Penutup sesuai permintaan: Jeda 5 detik sebelum menutup browser
         print("\nSkrip selesai.")
         await asyncio.sleep(5)
-        await browser.close()
+        await browser_context.close()
 
 if __name__ == "__main__":
     asyncio.run(main())
