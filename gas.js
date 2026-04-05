@@ -1066,406 +1066,410 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                         }
                     }
 
-                    console.log('\n┌─────────────────────────────────────────');
-                    console.log('│  Step 5+6 — Tunggu Lab + Kredensial');
-                    console.log('└─────────────────────────────────────────');
-                    console.log('  ~ Menunggu lab berjalan & kredensial muncul...');
-                    let labStarted = false;
+                } // <--- Ini penutup "if (needsCaptcha)"
 
-                    try {
-                        await page.waitForFunction(() => {
-                            const panel = document.querySelector('ql-lab-control-panel');
-                            if (!panel)
-                                return false;
+                // TAMBAHKAN SATU KURUNG TUTUP DI SINI UNTUK MENUTUP "else" DARI STEP 3
+            }
 
-                            function hasCredentials(root, depth = 0) {
-                                if (!root || depth > 10)
-                                    return false;
-                                for (const attrName of(root.host?.getAttributeNames?.() || [])) {
-                                    const val = root.host.getAttribute(attrName);
-                                    if (val && (val.includes('student-') || val.includes('qwiklabs-gcp-')))
-                                        return true;
-                                }
-                                const text = root.textContent || '';
-                                if (/student-[a-z0-9]+@/.test(text) || /qwiklabs-gcp-/.test(text))
-                                    return true;
-                                const els = root.querySelectorAll('*');
-                                for (const el of els) {
-                                    if (el.shadowRoot && hasCredentials(el.shadowRoot, depth + 1))
-                                        return true;
-                                }
-                                return false;
-                            }
-                            for (const attrName of panel.getAttributeNames()) {
-                                const val = panel.getAttribute(attrName);
-                                if (val && (val.includes('student-') || val.includes('qwiklabs-gcp-')))
-                                    return true;
-                            }
-                            if (panel.shadowRoot && hasCredentials(panel.shadowRoot))
-                                return true;
+            console.log('\n┌─────────────────────────────────────────');
+            console.log('│  Step 5+6 — Tunggu Lab + Kredensial');
+            console.log('└─────────────────────────────────────────');
+            console.log('  ~ Menunggu lab berjalan & kredensial muncul...');
+            let labStarted = false;
 
-                            if (panel.shadowRoot) {
-                                const allText = panel.shadowRoot.textContent || '';
-                                if (allText.includes('End Lab'))
-                                    return true;
-                                const btns = panel.shadowRoot.querySelectorAll('ql-lab-control-button, ql-button');
-                                for (const btn of btns) {
-                                    const t = btn.shadowRoot?.textContent || btn.textContent || '';
-                                    if (t.includes('End Lab'))
-                                        return true;
-                                }
-                            }
-                            const attr = panel.getAttribute('labcontrolbutton');
-                            if (attr) {
-                                try {
-                                    const s = JSON.parse(attr);
-                                    if (s.running || s.pending)
-                                        return true;
-                                    if (s.label && s.label.includes('End'))
-                                        return true;
-                                } catch {}
-                            }
-                            const timer = panel.getAttribute('labtimer');
-                            if (timer) {
-                                try {
-                                    const t = JSON.parse(timer);
-                                    if (t.ticking || t.secondsRemaining < 3600)
-                                        return true;
-                                } catch {}
-                            }
+            try {
+                await page.waitForFunction(() => {
+                    const panel = document.querySelector('ql-lab-control-panel');
+                    if (!panel)
+                        return false;
+
+                    function hasCredentials(root, depth = 0) {
+                        if (!root || depth > 10)
                             return false;
-                        }, {
-                            timeout: 180000
-                        });
-                        labStarted = true;
-                        console.log('  ✔ Lab siap!');
-                    } catch {
-                        const hasConsoleLink = await page.locator('a').filter({
-                            hasText: 'Open Google Cloud console'
-                        }).isVisible().catch(() => false);
-                        const hasEndLab = await page.locator('text=End Lab').isVisible().catch(() => false);
-                        if (hasConsoleLink || hasEndLab) {
-                            labStarted = true;
-                            console.log('  ✔ Lab dimulai (terdeteksi dari konten halaman)!');
-                        } else {
-                            console.log('  ✘ Tidak bisa konfirmasi lab start setelah 3 menit.');
-                            await page.screenshot({
-                                path: path.resolve(__dirname, "debug_start_lab.png"),
-                                fullPage: true
-                            });
+                        for (const attrName of(root.host?.getAttributeNames?.() || [])) {
+                            const val = root.host.getAttribute(attrName);
+                            if (val && (val.includes('student-') || val.includes('qwiklabs-gcp-')))
+                                return true;
+                        }
+                        const text = root.textContent || '';
+                        if (/student-[a-z0-9]+@/.test(text) || /qwiklabs-gcp-/.test(text))
+                            return true;
+                        const els = root.querySelectorAll('*');
+                        for (const el of els) {
+                            if (el.shadowRoot && hasCredentials(el.shadowRoot, depth + 1))
+                                return true;
+                        }
+                        return false;
+                    }
+                    for (const attrName of panel.getAttributeNames()) {
+                        const val = panel.getAttribute(attrName);
+                        if (val && (val.includes('student-') || val.includes('qwiklabs-gcp-')))
+                            return true;
+                    }
+                    if (panel.shadowRoot && hasCredentials(panel.shadowRoot))
+                        return true;
+
+                    if (panel.shadowRoot) {
+                        const allText = panel.shadowRoot.textContent || '';
+                        if (allText.includes('End Lab'))
+                            return true;
+                        const btns = panel.shadowRoot.querySelectorAll('ql-lab-control-button, ql-button');
+                        for (const btn of btns) {
+                            const t = btn.shadowRoot?.textContent || btn.textContent || '';
+                            if (t.includes('End Lab'))
+                                return true;
                         }
                     }
+                    const attr = panel.getAttribute('labcontrolbutton');
+                    if (attr) {
+                        try {
+                            const s = JSON.parse(attr);
+                            if (s.running || s.pending)
+                                return true;
+                            if (s.label && s.label.includes('End'))
+                                return true;
+                        } catch {}
+                    }
+                    const timer = panel.getAttribute('labtimer');
+                    if (timer) {
+                        try {
+                            const t = JSON.parse(timer);
+                            if (t.ticking || t.secondsRemaining < 3600)
+                                return true;
+                        } catch {}
+                    }
+                    return false;
+                }, {
+                    timeout: 180000
+                });
+                labStarted = true;
+                console.log('  ✔ Lab siap!');
+            } catch {
+                const hasConsoleLink = await page.locator('a').filter({
+                    hasText: 'Open Google Cloud console'
+                }).isVisible().catch(() => false);
+                const hasEndLab = await page.locator('text=End Lab').isVisible().catch(() => false);
+                if (hasConsoleLink || hasEndLab) {
+                    labStarted = true;
+                    console.log('  ✔ Lab dimulai (terdeteksi dari konten halaman)!');
+                } else {
+                    console.log('  ✘ Tidak bisa konfirmasi lab start setelah 3 menit.');
+                    await page.screenshot({
+                        path: path.resolve(__dirname, "debug_start_lab.png"),
+                        fullPage: true
+                    });
+                }
+            }
 
-                    console.log('\n┌─────────────────────────────────────────');
-                    console.log('│  Step 6 — Ekstraksi Kredensial');
-                    console.log('└─────────────────────────────────────────');
-                    if (labStarted) {
-                        console.log('  → Mengekstrak info lab...');
+            console.log('\n┌─────────────────────────────────────────');
+            console.log('│  Step 6 — Ekstraksi Kredensial');
+            console.log('└─────────────────────────────────────────');
+            if (labStarted) {
+                console.log('  → Mengekstrak info lab...');
 
-                        const extractAll = await page.evaluate(() => {
-                            function collectFromShadow(root, depth = 0) {
-                                const data = {
-                                    texts: [],
-                                    links: [],
-                                    inputs: []
-                                };
-                                if (!root || depth > 10)
-                                    return data;
+                const extractAll = await page.evaluate(() => {
+                    function collectFromShadow(root, depth = 0) {
+                        const data = {
+                            texts: [],
+                            links: [],
+                            inputs: []
+                        };
+                        if (!root || depth > 10)
+                            return data;
 
-                                const anchors = root.querySelectorAll('a');
-                                for (const a of anchors) {
-                                    if (a.href)
-                                        data.links.push({
-                                            href: a.href,
-                                            text: (a.textContent || '').trim()
-                                        });
-                                }
+                        const anchors = root.querySelectorAll('a');
+                        for (const a of anchors) {
+                            if (a.href)
+                                data.links.push({
+                                    href: a.href,
+                                    text: (a.textContent || '').trim()
+                                });
+                        }
 
-                                const inputs = root.querySelectorAll('input, [contenteditable]');
-                                for (const inp of inputs) {
-                                    const v = inp.value || inp.textContent || '';
-                                    if (v.trim())
-                                        data.inputs.push(v.trim());
-                                }
+                        const inputs = root.querySelectorAll('input, [contenteditable]');
+                        for (const inp of inputs) {
+                            const v = inp.value || inp.textContent || '';
+                            if (v.trim())
+                                data.inputs.push(v.trim());
+                        }
 
-                                const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
-                                let node;
-                                while (node = walker.nextNode()) {
-                                    const t = node.textContent.trim();
-                                    if (t.length > 0)
-                                        data.texts.push(t);
-                                }
+                        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+                        let node;
+                        while (node = walker.nextNode()) {
+                            const t = node.textContent.trim();
+                            if (t.length > 0)
+                                data.texts.push(t);
+                        }
 
-                                const allEls = root.querySelectorAll('*');
-                                for (const el of allEls) {
-                                    if (el.shadowRoot) {
-                                        const sub = collectFromShadow(el.shadowRoot, depth + 1);
-                                        data.texts.push(...sub.texts);
-                                        data.links.push(...sub.links);
-                                        data.inputs.push(...sub.inputs);
-                                    }
-                                }
-                                return data;
+                        const allEls = root.querySelectorAll('*');
+                        for (const el of allEls) {
+                            if (el.shadowRoot) {
+                                const sub = collectFromShadow(el.shadowRoot, depth + 1);
+                                data.texts.push(...sub.texts);
+                                data.links.push(...sub.links);
+                                data.inputs.push(...sub.inputs);
                             }
+                        }
+                        return data;
+                    }
 
-                            const panel = document.querySelector('ql-lab-control-panel');
-                            if (!panel)
-                                return {
-                                    texts: [],
-                                    links: [],
-                                    inputs: [],
-                                    attrs: {}
-                                };
+                    const panel = document.querySelector('ql-lab-control-panel');
+                    if (!panel)
+                        return {
+                            texts: [],
+                            links: [],
+                            inputs: [],
+                            attrs: {}
+                        };
 
-                            const shadowData = panel.shadowRoot ? collectFromShadow(panel.shadowRoot) : {
-                                texts: [],
-                                links: [],
-                                inputs: []
-                            };
+                    const shadowData = panel.shadowRoot ? collectFromShadow(panel.shadowRoot) : {
+                        texts: [],
+                        links: [],
+                        inputs: []
+                    };
 
-                            const pageLinks = [];
-                            for (const a of document.querySelectorAll('a')) {
-                                if (a.href && (a.href.includes('console.cloud.google') || a.textContent.includes('Google Cloud')))
-                                    pageLinks.push({
-                                        href: a.href,
-                                        text: (a.textContent || '').trim()
-                                    });
-                            }
-                            shadowData.links.push(...pageLinks);
+                    const pageLinks = [];
+                    for (const a of document.querySelectorAll('a')) {
+                        if (a.href && (a.href.includes('console.cloud.google') || a.textContent.includes('Google Cloud')))
+                            pageLinks.push({
+                                href: a.href,
+                                text: (a.textContent || '').trim()
+                            });
+                    }
+                    shadowData.links.push(...pageLinks);
 
-                            const attrs = {};
-                            for (const attrName of panel.getAttributeNames()) {
-                                const val = panel.getAttribute(attrName);
-                                if (val && val.length < 5000)
-                                    attrs[attrName] = val;
-                            }
-                            shadowData.attrs = attrs;
+                    const attrs = {};
+                    for (const attrName of panel.getAttributeNames()) {
+                        const val = panel.getAttribute(attrName);
+                        if (val && val.length < 5000)
+                            attrs[attrName] = val;
+                    }
+                    shadowData.attrs = attrs;
 
-                            return shadowData;
-                        });
+                    return shadowData;
+                });
 
-                        let consoleLink = null;
-                        let username = null;
-                        let labPassword = null;
-                        let projectId = null;
+                let consoleLink = null;
+                let username = null;
+                let labPassword = null;
+                let projectId = null;
 
-                        for (const link of extractAll.links) {
-                            if (link.href.includes('console.cloud.google') || link.text.includes('Open Google Cloud') || link.text.includes('Google Cloud console')) {
-                                consoleLink = link.href;
+                for (const link of extractAll.links) {
+                    if (link.href.includes('console.cloud.google') || link.text.includes('Open Google Cloud') || link.text.includes('Google Cloud console')) {
+                        consoleLink = link.href;
+                        break;
+                    }
+                }
+
+                const allTexts = [...extractAll.texts, ...extractAll.inputs];
+                for (const t of allTexts) {
+                    if (!username && /^student-/.test(t))
+                        username = t.trim();
+                    if (!projectId && /^qwiklabs-gcp-/.test(t))
+                        projectId = t.trim();
+                }
+
+                const LABEL_BLACKLIST = ['Username', 'Password', 'Project', 'Google', 'Continue', 'Authorize', 'Cancel', 'Start', 'Open', 'End', 'Get', 'Lab', 'Copy', 'Click', 'content_copy', 'content copy', 'file_copy', 'Project ID', 'Open Google Cloud console', 'Open Google Cloud Console', 'student-', 'qwiklabs-gcp-'];
+
+                for (let i = 0; i < allTexts.length; i++) {
+                    const label = allTexts[i].trim().replace(/:$/, '');
+                    if (/^Password$/i.test(label)) {
+                        for (let j = i + 1; j < Math.min(i + 6, allTexts.length); j++) {
+                            const candidate = allTexts[j].trim();
+                            if (candidate.length >= 3 && !LABEL_BLACKLIST.some(bl => candidate === bl || candidate.toLowerCase() === bl.toLowerCase() || candidate.startsWith(bl)) && !candidate.includes('student') && !candidate.includes('qwiklabs')) {
+                                labPassword = candidate;
+                                console.log(`  ✔ Password ditemukan via label-value (offset ${j - i}): ${labPassword}`);
                                 break;
                             }
                         }
-
-                        const allTexts = [...extractAll.texts, ...extractAll.inputs];
-                        for (const t of allTexts) {
-                            if (!username && /^student-/.test(t))
-                                username = t.trim();
-                            if (!projectId && /^qwiklabs-gcp-/.test(t))
-                                projectId = t.trim();
-                        }
-
-                        const LABEL_BLACKLIST = ['Username', 'Password', 'Project', 'Google', 'Continue', 'Authorize', 'Cancel', 'Start', 'Open', 'End', 'Get', 'Lab', 'Copy', 'Click', 'content_copy', 'content copy', 'file_copy', 'Project ID', 'Open Google Cloud console', 'Open Google Cloud Console', 'student-', 'qwiklabs-gcp-'];
-
-                        for (let i = 0; i < allTexts.length; i++) {
-                            const label = allTexts[i].trim().replace(/:$/, '');
-                            if (/^Password$/i.test(label)) {
-                                for (let j = i + 1; j < Math.min(i + 6, allTexts.length); j++) {
-                                    const candidate = allTexts[j].trim();
-                                    if (candidate.length >= 3 && !LABEL_BLACKLIST.some(bl => candidate === bl || candidate.toLowerCase() === bl.toLowerCase() || candidate.startsWith(bl)) && !candidate.includes('student') && !candidate.includes('qwiklabs')) {
-                                        labPassword = candidate;
-                                        console.log(`  ✔ Password ditemukan via label-value (offset ${j - i}): ${labPassword}`);
-                                        break;
-                                    }
-                                }
-                                if (labPassword)
-                                    break;
-                            }
-                        }
-
-                        if (!labPassword) {
-                            for (const t of allTexts) {
-                                const trimmed = t.trim();
-                                if (trimmed.length >= 8 && /[A-Za-z]/.test(trimmed) && /\d/.test(trimmed) && !/\s/.test(trimmed) && !trimmed.includes('student') && !trimmed.includes('qwiklabs') && !trimmed.startsWith('http') && !LABEL_BLACKLIST.some(word => trimmed === word || trimmed.toLowerCase() === word.toLowerCase())) {
-                                    labPassword = trimmed;
-                                    console.log(`  ✔ Password ditemukan via regex fallback: ${labPassword}`);
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (!labPassword) {
-                            console.log(`  ✘ Password tidak ditemukan. Semua text nodes (${allTexts.length}):`);
-                            allTexts.forEach((t, i) => console.log(`    [${i}] "${t.trim()}"`));
-                        }
-
-                        const isValidPassword = (val) => {
-                            if (!val || typeof val !== 'string')
-                                return false;
-                            const v = val.trim();
-                            if (v.length < 3)
-                                return false;
-                            if (['Username', 'Password', 'Project ID', 'Project', 'Google', 'Lab'].includes(v))
-                                return false;
-                            if (v.includes('student-') || v.includes('qwiklabs-gcp-'))
-                                return false;
-                            return true;
-                        };
-
-                        if (extractAll.attrs) {
-                            console.log(`  → Memeriksa ${Object.keys(extractAll.attrs).length} panel attribute...`);
-                            for (const [key, val] of Object.entries(extractAll.attrs)) {
-                                try {
-                                    const parsed = JSON.parse(val);
-                                    if (typeof parsed === 'object' && parsed !== null) {
-                                        if (parsed.username && !username)
-                                            username = parsed.username;
-                                        if (parsed.password && !labPassword && isValidPassword(parsed.password)) {
-                                            labPassword = parsed.password;
-                                            console.log(`  ✔ Password dari attrs.password: ${labPassword}`);
-                                        }
-                                        if (parsed.projectId && !projectId)
-                                            projectId = parsed.projectId;
-                                        if (parsed.project_id && !projectId)
-                                            projectId = parsed.project_id;
-                                        if (parsed.student_email && !username)
-                                            username = parsed.student_email;
-                                        if (parsed.items && Array.isArray(parsed.items)) {
-                                            for (const item of parsed.items) {
-                                                if (item.key === 'username' || item.label === 'Username')
-                                                    username = username || item.value;
-                                                if ((item.key === 'password' || item.label === 'Password') && isValidPassword(item.value))
-                                                    labPassword = labPassword || item.value;
-                                                if (item.key === 'project_id' || item.label === 'Project ID')
-                                                    projectId = projectId || item.value;
-                                            }
-                                        }
-                                    }
-                                } catch {}
-                            }
-                        }
-
-                        console.log(`\n  ┌─ Hasil Ekstraksi ──────────────────────`);
-                        console.log(`  │  Console Link : ${consoleLink || 'tidak ditemukan'}`);
-                        console.log(`  │  Username     : ${username || 'tidak ditemukan'}`);
-                        console.log(`  │  Password     : ${labPassword || 'tidak ditemukan'}`);
-                        console.log(`  │  Project ID   : ${projectId || 'tidak ditemukan'}`);
-                        console.log(`  └────────────────────────────────────────`);
-
-                        const resultLines = [
-`=== Lab Results ===${new Date().toLocaleString('id-ID', {
-                                timeZone: 'Asia/Jakarta'
-                            })}===`,
-                            `Console Link: ${consoleLink || 'not found'}`, 
-                            `Username: ${username || 'not found'}`, 
-                            `Password: ${labPassword || 'not found'}`, 
-                            `Project ID: ${projectId || 'not found'}`, 
-`Lab URL: ${page.url()}`,
-                            '',
-                        ];
-                        const resultPath = path.resolve(__dirname, 'result.txt');
-                        fs.appendFileSync(resultPath, resultLines.join('\n') + '\n', 'utf-8');
-                        console.log('  ✔ Hasil disimpan ke result.txt');
-
-                        if (consoleLink) {
-                            const linkPath = path.resolve(__dirname, 'link.txt');
-                            fs.writeFileSync(linkPath, consoleLink + '\n', 'utf-8');
-                            console.log('  ✔ Console link ditulis ke link.txt');
-                        }
-
-                        let msg = '✅ <b>Lab Started Successfully!</b>\n\n';
-                        msg += `⏱ Lab is running\n`;
-                        if (consoleLink)
-                            msg += `\n🔗 <b>Console Link:</b>\n<code>${consoleLink}</code>\n`;
-                        if (username)
-                            msg += `\n👤 <b>Username:</b>\n<code>${username}</code>\n`;
                         if (labPassword)
-                            msg += `\n🔑 <b>Password:</b>\n<code>${labPassword}</code>\n`;
-                        if (projectId)
-                            msg += `\n📁 <b>Project ID:</b>\n<code>${projectId}</code>\n`;
+                            break;
+                    }
+                }
 
-                        await tgSendMessage(msg);
-                        console.log('  ✔ Info lab dikirim ke Telegram!');
-
-                        if (consoleLink) {
-                            await runCloudShell(context, consoleLink, password, projectId, username, labPassword);
-                        } else {
-                            console.log('  ✘ consoleLink tidak ditemukan, skip Cloud Shell.');
+                if (!labPassword) {
+                    for (const t of allTexts) {
+                        const trimmed = t.trim();
+                        if (trimmed.length >= 8 && /[A-Za-z]/.test(trimmed) && /\d/.test(trimmed) && !/\s/.test(trimmed) && !trimmed.includes('student') && !trimmed.includes('qwiklabs') && !trimmed.startsWith('http') && !LABEL_BLACKLIST.some(word => trimmed === word || trimmed.toLowerCase() === word.toLowerCase())) {
+                            labPassword = trimmed;
+                            console.log(`  ✔ Password ditemukan via regex fallback: ${labPassword}`);
+                            break;
                         }
                     }
+                }
 
-                    console.log('\n┌─────────────────────────────────────────');
-                    console.log(`│  Selesai! (${label})`);
-                    console.log('└─────────────────────────────────────────');
-                    console.log(`  ✔ URL akhir: ${page.url()}`);
+                if (!labPassword) {
+                    console.log(`  ✘ Password tidak ditemukan. Semua text nodes (${allTexts.length}):`);
+                    allTexts.forEach((t, i) => console.log(`    [${i}] "${t.trim()}"`));
+                }
 
-                    await new Promise(r => setTimeout(r, 1000));
+                const isValidPassword = (val) => {
+                    if (!val || typeof val !== 'string')
+                        return false;
+                    const v = val.trim();
+                    if (v.length < 3)
+                        return false;
+                    if (['Username', 'Password', 'Project ID', 'Project', 'Google', 'Lab'].includes(v))
+                        return false;
+                    if (v.includes('student-') || v.includes('qwiklabs-gcp-'))
+                        return false;
                     return true;
-                }
-                catch (err) {
-                    console.error(`  ✘ Error [${email}]:`, err.message);
-                    const screenshotPath = path.resolve(__dirname, `error_${email.split('@')[0]}.png`);
-                    await page.screenshot({
-                        path: screenshotPath,
-                        fullPage: true
-                    }).catch(() => {});
-                    console.error(`  ⬡ Screenshot disimpan: ${screenshotPath}`);
-                    return false;
-                } finally {
-                    await context.close();
-                    console.log(`  ✔ Browser ditutup untuk ${email}`);
-                }
-            }
+                };
 
-            let loopCount = 0;
-            while (loopCount < maxLoops) {
-                loopCount++;
-                const loopLabel = maxLoops === Infinity ? `Loop ke-${loopCount}` : `Loop ${loopCount}/${maxLoops}`;
-                console.log(`\n${'█'.repeat(50)}`);
-                console.log(`  🔁 ${loopLabel} — ${selected.length} akun, ${threads} thread`);
-                console.log(`${'█'.repeat(50)}`);
-
-                const failedAccounts = [];
-
-                for (let i = 0; i < selected.length; i += threads) {
-                    const chunk = selected.slice(i, i + threads);
-                    console.log(`\n  → Batch ${Math.floor(i / threads) + 1}: ${chunk.map(a => a.email).join(', ')}`);
-                    const results = await Promise.all(
-                            chunk.map((acc, j) => processAccount(acc, `Akun ${i + j + 1}/${selected.length} [${loopLabel}]`)));
-                    results.forEach((ok, j) => {
-                        if (!ok) {
-                            failedAccounts.push(chunk[j]);
-                            console.log(`  ⚠ ${chunk[j].email} masuk antrian retry`);
-                        }
-                    });
-                    if (i + threads < selected.length) {
-                        console.log(`\n  ⏳ Jeda 5 detik sebelum batch berikutnya...`);
-                        await new Promise(r => setTimeout(r, 5000));
+                if (extractAll.attrs) {
+                    console.log(`  → Memeriksa ${Object.keys(extractAll.attrs).length} panel attribute...`);
+                    for (const [key, val] of Object.entries(extractAll.attrs)) {
+                        try {
+                            const parsed = JSON.parse(val);
+                            if (typeof parsed === 'object' && parsed !== null) {
+                                if (parsed.username && !username)
+                                    username = parsed.username;
+                                if (parsed.password && !labPassword && isValidPassword(parsed.password)) {
+                                    labPassword = parsed.password;
+                                    console.log(`  ✔ Password dari attrs.password: ${labPassword}`);
+                                }
+                                if (parsed.projectId && !projectId)
+                                    projectId = parsed.projectId;
+                                if (parsed.project_id && !projectId)
+                                    projectId = parsed.project_id;
+                                if (parsed.student_email && !username)
+                                    username = parsed.student_email;
+                                if (parsed.items && Array.isArray(parsed.items)) {
+                                    for (const item of parsed.items) {
+                                        if (item.key === 'username' || item.label === 'Username')
+                                            username = username || item.value;
+                                        if ((item.key === 'password' || item.label === 'Password') && isValidPassword(item.value))
+                                            labPassword = labPassword || item.value;
+                                        if (item.key === 'project_id' || item.label === 'Project ID')
+                                            projectId = projectId || item.value;
+                                    }
+                                }
+                            }
+                        } catch {}
                     }
                 }
 
-                if (failedAccounts.length > 0) {
-                    console.log(`\n${'═'.repeat(50)}`);
-                    console.log(`  🔄 RETRY: ${failedAccounts.length} akun gagal...`);
-                    console.log(`${'═'.repeat(50)}`);
-                    await tgSendMessage(`🔄 Retry ${failedAccounts.length} akun: ${failedAccounts.map(a => a.email).join(', ')}`);
-                    for (let i = 0; i < failedAccounts.length; i++) {
-                        console.log(`\n  ⏳ Jeda 10 detik sebelum retry...`);
-                        await new Promise(r => setTimeout(r, 10000));
-                        const ok = await processAccount(failedAccounts[i], `Retry ${i + 1}/${failedAccounts.length} [${loopLabel}]`);
-                        if (ok) {
-                            console.log(`  ✔ Retry berhasil: ${failedAccounts[i].email}`);
-                        } else {
-                            console.log(`  ✘ Retry gagal: ${failedAccounts[i].email} — skip.`);
-                            await tgSendMessage(`❌ ${failedAccounts[i].email} gagal setelah retry, skip.`);
-                        }
-                    }
+                console.log(`\n  ┌─ Hasil Ekstraksi ──────────────────────`);
+                console.log(`  │  Console Link : ${consoleLink || 'tidak ditemukan'}`);
+                console.log(`  │  Username     : ${username || 'tidak ditemukan'}`);
+                console.log(`  │  Password     : ${labPassword || 'tidak ditemukan'}`);
+                console.log(`  │  Project ID   : ${projectId || 'tidak ditemukan'}`);
+                console.log(`  └────────────────────────────────────────`);
+
+                const resultLines = [
+`=== Lab Results ===${new Date().toLocaleString('id-ID', {
+                        timeZone: 'Asia/Jakarta'
+                    })}===`,
+                    `Console Link: ${consoleLink || 'not found'}`, 
+                    `Username: ${username || 'not found'}`, 
+                    `Password: ${labPassword || 'not found'}`, 
+                    `Project ID: ${projectId || 'not found'}`, 
+`Lab URL: ${page.url()}`,
+                    '',
+                ];
+                const resultPath = path.resolve(__dirname, 'result.txt');
+                fs.appendFileSync(resultPath, resultLines.join('\n') + '\n', 'utf-8');
+                console.log('  ✔ Hasil disimpan ke result.txt');
+
+                if (consoleLink) {
+                    const linkPath = path.resolve(__dirname, 'link.txt');
+                    fs.writeFileSync(linkPath, consoleLink + '\n', 'utf-8');
+                    console.log('  ✔ Console link ditulis ke link.txt');
                 }
 
-                if (loopCount < maxLoops) {
-                    console.log(`\n  ⏳ Jeda 5 detik sebelum loop berikutnya...`);
-                    await new Promise(r => setTimeout(r, 5000));
+                let msg = '✅ <b>Lab Started Successfully!</b>\n\n';
+                msg += `⏱ Lab is running\n`;
+                if (consoleLink)
+                    msg += `\n🔗 <b>Console Link:</b>\n<code>${consoleLink}</code>\n`;
+                if (username)
+                    msg += `\n👤 <b>Username:</b>\n<code>${username}</code>\n`;
+                if (labPassword)
+                    msg += `\n🔑 <b>Password:</b>\n<code>${labPassword}</code>\n`;
+                if (projectId)
+                    msg += `\n📁 <b>Project ID:</b>\n<code>${projectId}</code>\n`;
+
+                await tgSendMessage(msg);
+                console.log('  ✔ Info lab dikirim ke Telegram!');
+
+                if (consoleLink) {
+                    await runCloudShell(context, consoleLink, password, projectId, username, labPassword);
+                } else {
+                    console.log('  ✘ consoleLink tidak ditemukan, skip Cloud Shell.');
                 }
             }
 
-            console.log('\n  ✔ Semua loop selesai diproses.');
-        })();
+            console.log('\n┌─────────────────────────────────────────');
+            console.log(`│  Selesai! (${label})`);
+            console.log('└─────────────────────────────────────────');
+            console.log(`  ✔ URL akhir: ${page.url()}`);
+
+            await new Promise(r => setTimeout(r, 1000));
+            return true;
+        } catch (err) {
+            console.error(`  ✘ Error [${email}]:`, err.message);
+            const screenshotPath = path.resolve(__dirname, `error_${email.split('@')[0]}.png`);
+            await page.screenshot({
+                path: screenshotPath,
+                fullPage: true
+            }).catch(() => {});
+            console.error(`  ⬡ Screenshot disimpan: ${screenshotPath}`);
+            return false;
+        } finally {
+            await context.close();
+            console.log(`  ✔ Browser ditutup untuk ${email}`);
+        }
+    }
+
+    let loopCount = 0;
+    while (loopCount < maxLoops) {
+        loopCount++;
+        const loopLabel = maxLoops === Infinity ? `Loop ke-${loopCount}` : `Loop ${loopCount}/${maxLoops}`;
+        console.log(`\n${'█'.repeat(50)}`);
+        console.log(`  🔁 ${loopLabel} — ${selected.length} akun, ${threads} thread`);
+        console.log(`${'█'.repeat(50)}`);
+
+        const failedAccounts = [];
+
+        for (let i = 0; i < selected.length; i += threads) {
+            const chunk = selected.slice(i, i + threads);
+            console.log(`\n  → Batch ${Math.floor(i / threads) + 1}: ${chunk.map(a => a.email).join(', ')}`);
+            const results = await Promise.all(
+                    chunk.map((acc, j) => processAccount(acc, `Akun ${i + j + 1}/${selected.length} [${loopLabel}]`)));
+            results.forEach((ok, j) => {
+                if (!ok) {
+                    failedAccounts.push(chunk[j]);
+                    console.log(`  ⚠ ${chunk[j].email} masuk antrian retry`);
+                }
+            });
+            if (i + threads < selected.length) {
+                console.log(`\n  ⏳ Jeda 5 detik sebelum batch berikutnya...`);
+                await new Promise(r => setTimeout(r, 5000));
+            }
+        }
+
+        if (failedAccounts.length > 0) {
+            console.log(`\n${'═'.repeat(50)}`);
+            console.log(`  🔄 RETRY: ${failedAccounts.length} akun gagal...`);
+            console.log(`${'═'.repeat(50)}`);
+            await tgSendMessage(`🔄 Retry ${failedAccounts.length} akun: ${failedAccounts.map(a => a.email).join(', ')}`);
+            for (let i = 0; i < failedAccounts.length; i++) {
+                console.log(`\n  ⏳ Jeda 10 detik sebelum retry...`);
+                await new Promise(r => setTimeout(r, 10000));
+                const ok = await processAccount(failedAccounts[i], `Retry ${i + 1}/${failedAccounts.length} [${loopLabel}]`);
+                if (ok) {
+                    console.log(`  ✔ Retry berhasil: ${failedAccounts[i].email}`);
+                } else {
+                    console.log(`  ✘ Retry gagal: ${failedAccounts[i].email} — skip.`);
+                    await tgSendMessage(`❌ ${failedAccounts[i].email} gagal setelah retry, skip.`);
+                }
+            }
+        }
+
+        if (loopCount < maxLoops) {
+            console.log(`\n  ⏳ Jeda 5 detik sebelum loop berikutnya...`);
+            await new Promise(r => setTimeout(r, 5000));
+        }
+    }
+
+    console.log('\n  ✔ Semua loop selesai diproses.');
+})();
