@@ -275,7 +275,9 @@ async def main():
         create_btn = page.locator("button[data-analytics-action='clicked_create_account']").first
         await create_btn.scroll_into_view_if_needed()
         await create_btn.wait_for(state="visible")
-        await create_btn.click()
+        
+        # Eksekusi JS click untuk mem-bypass elemen yang menutupi tombol
+        await create_btn.evaluate("node => node.click()")
         
         # === Step 10: Verifikasi via Web ===
         print("Step 10: Menunggu sistem mengirim email (Jeda 7 detik)...")
