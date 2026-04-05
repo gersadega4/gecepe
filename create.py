@@ -3,51 +3,26 @@ import random
 import string
 import os
 import re
-import time
-import urllib.parse
 import html
+import urllib.parse
 from playwright.async_api import async_playwright
 
 # === FUNGSI BARU: Daftar User-Agent Random ===
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0"
 ]
 
-# === FUNGSI BARU: Membaca Domain dari File ===
-def get_domains(file_path="domain.txt"):
+# === FUNGSI BARU: Memastikan Domain Eksklusif ===
+def get_domains():
     """
-    Membaca domain dari file TXT. 
-    Secara otomatis membuat file dan memberikan fallback jika file tidak ada.
+    Menetapkan domain secara eksklusif untuk memastikan fungsionalitas,
+    menghindari dependensi file eksternal yang rentan terhadap modifikasi.
     """
-    fallback_domains = ["hotmailvip.tokyo", "d4ngerssquy.info"]
-    
-    if not os.path.exists(file_path):
-        print(f"  ⚠ File {file_path} tidak ditemukan. Membuat file baru dengan domain bawaan...")
-        try:
-            with open(file_path, "w") as f:
-                for d in fallback_domains:
-                    f.write(f"{d}\n")
-        except Exception as e:
-            print(f"  ✘ Gagal membuat file {file_path}: {e}")
-        return fallback_domains
+    return ["hotmailvip.tokyo", "d4ngerssquy.info"]
 
-    with open(file_path, "r") as f:
-        # Membaca file, membuang spasi/newline (.strip()), dan mengabaikan baris kosong
-        domains = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
-
-    if not domains:
-        print(f"  ⚠ File {file_path} kosong! Menggunakan domain fallback.")
-        return fallback_domains
-
-    return domains
-
-# Inisialisasi daftar domain saat skrip dimuat
 DOMAINS_LIST = get_domains()
 
 def generate_random_name(length=7):
@@ -55,7 +30,7 @@ def generate_random_name(length=7):
 
 def generate_random_email():
     """
-    Menghasilkan email acak dengan memanggil domain dari variabel global DOMAINS_LIST.
+    Menghasilkan email acak dengan memanggil domain yang sudah diverifikasi.
     """
     length = random.randint(7, 12)
     random_user = ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
@@ -67,65 +42,53 @@ async def type_like_human(page, selector, text):
     await page.locator(selector).click()
     await page.keyboard.type(text, delay=random.randint(30, 100))
 
-# === FUNGSI BARU: Mengambil Link Verifikasi via Web (generator.email) ===
+# === FUNGSI BARU: Mengambil Link Verifikasi via Background Network Request ===
 async def get_confirmation_link_web(context, target_email):
     """
-    Membuka tab baru, mengakses generator.email, dan melakukan polling
-    hingga email konfirmasi ditemukan, mendukung format link raw maupun redirect Google.
+    Melakukan background HTTP request menggunakan network stack Playwright.
+    Menghindari pembuatan page (UI) untuk mem-bypass tantangan Cloudflare JS.
     """
-    page = await context.new_page()
-    try:
-        print(f"  -> Membuka tab baru untuk cek inbox: {target_email}")
-        
-        # Injeksi cookie 'embx' (sering dibutuhkan generator.email untuk me-load inbox spesifik)
-        await context.add_cookies([{
-            "name": "embx", 
-            "value": f"[%22{target_email}%22]", 
-            "domain": ".generator.email", 
-            "path": "/"
-        }])
-        
-        await page.goto(f"https://generator.email/{target_email}", wait_until="domcontentloaded")
-        
-        # Polling selama 60 detik (12 percobaan x 5 detik)
-        for attempt in range(1, 13):
-            print(f"     (Percobaan {attempt}/12): Memindai halaman kotak masuk...")
+    print(f"  -> Mengekstrak inbox via Background Network Request: {target_email}")
+    
+    # Injeksi cookie 'embx' langsung ke dalam context browser
+    await context.add_cookies([{
+        "name": "embx", 
+        "value": f"[%22{target_email}%22]", 
+        "domain": ".generator.email", 
+        "path": "/"
+    }])
+    
+    for attempt in range(1, 13):
+        print(f"     (Percobaan {attempt}/12): Memindai data kotak masuk...")
+        try:
+            # Menggunakan API request Playwright (Bypass DOM rendering)
+            response = await context.request.get(f"https://generator.email/{target_email}", timeout=10000)
+            content = await response.text()
             
-            # Ambil seluruh source HTML halaman
-            content = await page.content()
+            if "Just a moment..." in content or "cf-browser-verification" in content:
+                print("     ⚠ Terdeteksi tantangan Cloudflare (Background), mencoba ulang...")
             
-            # Pola 1: Format link redirect Google (Sesuai log error terbaru)
+            # Pola 1: Format link redirect Google
             link_pattern_redirect = r'https://notifications\.googleapis\.com/email/redirect\?[^"\'\s>]+'
             
             # Pola 2: Format link murni (Sebagai backup)
             link_pattern_raw = r'https://www\.skills\.google/users/confirmation\?confirmation_token=[^"\'\s&>]+'
             
-            # Coba cari pola redirect terlebih dahulu
             match = re.search(link_pattern_redirect, content)
-            
-            # Jika tidak ada, coba cari pola murni
             if not match:
                 match = re.search(link_pattern_raw, content)
             
             if match:
-                # Membersihkan entitas HTML (misal: merubah &amp; kembali menjadi &)
                 raw_link = html.unescape(match.group(0))
-                
-                # Hanya tambahkan parameter locale jika itu adalah tautan murni (bukan redirect)
                 if "skills.google" in raw_link and "locale=" not in raw_link:
                     raw_link += "&locale=en"
                     
-                print("  ✔ Tautan verifikasi ditemukan di kotak masuk!")
+                print("  ✔ Tautan verifikasi ditemukan!")
                 return raw_link
+        except Exception as e:
+            print(f"  ✘ Error Network Request: {e}")
             
-            # Jika belum ketemu, refresh halaman
-            await asyncio.sleep(5)
-            await page.reload(wait_until="domcontentloaded")
-            
-    except Exception as e:
-        print(f"  ✘ Error Scraping Web Email: {e}")
-    finally:
-        await page.close() # Pastikan tab ekstra selalu ditutup
+        await asyncio.sleep(5)
         
     return None
 
@@ -159,7 +122,6 @@ async def main():
         print("  -> Menjalankan browser TANPA Proxy.")
     
     async with async_playwright() as p:
-        # Pilih User-Agent secara acak dari daftar
         random_user_agent = random.choice(USER_AGENTS)
         print(f"  -> Menggunakan User-Agent: {random_user_agent}")
 
@@ -168,7 +130,7 @@ async def main():
             headless=False,
             no_viewport=True, 
             proxy=proxy_config,
-            user_agent=random_user_agent,  # <--- IMPLEMENTASI USER-AGENT RANDOM DI SINI
+            user_agent=random_user_agent, 
             args=[
                 "--start-maximized", 
                 f"--disable-extensions-except={extension_path}",
@@ -292,14 +254,12 @@ async def main():
         await create_btn.scroll_into_view_if_needed()
         await create_btn.wait_for(state="visible")
         
-        # Eksekusi JS click untuk mem-bypass elemen yang menutupi tombol
         await create_btn.evaluate("node => node.click()")
         
-        # === Step 10: Verifikasi via Web ===
+        # === Step 10: Verifikasi (Optimasi Background Network Request) ===
         print("Step 10: Menunggu sistem mengirim email (Jeda 7 detik)...")
         await asyncio.sleep(7) 
         
-        # Memanggil fungsi scraper web dengan melemparkan browser_context
         link_verifikasi = await get_confirmation_link_web(browser_context, email_address)
 
         if link_verifikasi:
@@ -314,7 +274,7 @@ async def main():
             except Exception as e:
                 print(f"  ✘ Gagal menyimpan ke file: {e}")
         else:
-            print("  ✘ Gagal verifikasi: Waktu tunggu habis / Link tidak ditemukan di generator.email.")
+            print("  ✘ Gagal verifikasi: Waktu tunggu habis / Link tidak ditemukan.")
 
         print("\nSkrip selesai.")
         await asyncio.sleep(5)
