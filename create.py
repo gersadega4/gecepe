@@ -8,6 +8,17 @@ import urllib.parse
 import html
 from playwright.async_api import async_playwright
 
+# === FUNGSI BARU: Daftar User-Agent Random ===
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+]
+
 # === FUNGSI BARU: Membaca Domain dari File ===
 def get_domains(file_path="domain.txt"):
     """
@@ -148,14 +159,16 @@ async def main():
         print("  -> Menjalankan browser TANPA Proxy.")
     
     async with async_playwright() as p:
-# Tentukan string User-Agent yang ingin digunakan
-        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        # Pilih User-Agent secara acak dari daftar
+        random_user_agent = random.choice(USER_AGENTS)
+        print(f"  -> Menggunakan User-Agent: {random_user_agent}")
 
         browser_context = await p.chromium.launch_persistent_context(
             user_data_dir,
             headless=False,
             no_viewport=True, 
             proxy=proxy_config,
+            user_agent=random_user_agent,  # <--- IMPLEMENTASI USER-AGENT RANDOM DI SINI
             args=[
                 "--start-maximized", 
                 f"--disable-extensions-except={extension_path}",
