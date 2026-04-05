@@ -148,6 +148,9 @@ async def main():
         print("  -> Menjalankan browser TANPA Proxy.")
     
     async with async_playwright() as p:
+# Tentukan string User-Agent yang ingin digunakan
+        user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+
         browser_context = await p.chromium.launch_persistent_context(
             user_data_dir,
             headless=False,
