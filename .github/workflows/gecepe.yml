@@ -12,13 +12,13 @@ jobs:
     timeout-minutes: 30
 
     strategy:
-      max-parallel: 3
+      max-parallel: 5
       fail-fast: false
       matrix:
         job_id: [1, 2, 3, 4, 5]
 
     env:
-      JOB_COUNT: 3
+      JOB_COUNT: 5
       CURRENT_JOB: ${{ matrix.job_id }}
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
