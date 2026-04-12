@@ -123,8 +123,8 @@ async function getConfirmationLinkWeb(context, targetEmail) {
         await context.addCookies([{ name: "embx", value: `[%22${targetEmail}%22]`, domain: ".generator.email", path: "/" }]);
         await page.goto(`https://generator.email/${targetEmail}`, { waitUntil: "domcontentloaded" });
         
-        for (let attempt = 1; attempt <= 7; attempt++) {
-            console.log(`     (Percobaan ${attempt}/7): Memindai inbox...`);
+        for (let attempt = 1; attempt <= 5; attempt++) {
+            console.log(`     (Percobaan ${attempt}/5): Memindai inbox...`);
             const content = await page.content();
             
             const rawLinkMatch = content.match(/https:\/\/www\.skills\.google\/users\/confirmation\?confirmation_token=[^"'\s&>]+/);
@@ -334,7 +334,27 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
     LIST_DOMAIN = await loadDomains();
     console.log(`  ✔ ${LIST_DOMAIN.length} Domain siap digunakan untuk generasi email.`);
 
-    const maxLoops = 1; // Ubah jika ingin membuat banyak akun sekaligus
+    // --- MODIFIKASI: FUNGSI INTERAKTIF CLI ---
+    const readline = require('readline').createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+
+    const askQuestion = (query) => new Promise(resolve => readline.question(query, resolve));
+    
+    let maxLoops = 1;
+    const answer = await askQuestion('\n  ❓ Berapa jumlah akun yang ingin diproses? : ');
+    const parsedAnswer = parseInt(answer.trim(), 10);
+    
+    readline.close();
+
+    if (isNaN(parsedAnswer) || parsedAnswer <= 0) {
+        console.log('  ✘ Masukkan angka tidak valid! Menjalankan 1 akun sebagai default.\n');
+    } else {
+        maxLoops = parsedAnswer;
+        console.log(`  ✔ Mengatur antrean untuk ${maxLoops} akun. Memulai proses...\n`);
+    }
+
     const useHeadless = false;
 
     async function processSinglePipeline(label) {
@@ -346,6 +366,7 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
         console.log(`  Data Akun : ${email}`);
         console.log(`${'═'.repeat(50)}`);
 
+        // FOLDER PROFIL BARU: Jaminan 100% Fresh per Akun
         const emailSlug = email.replace(/[@.]/g, '_') + '_' + Date.now();
         const profileDir = path.join(CONFIG.PROFILES_DIR, emailSlug);
         if (!fs.existsSync(profileDir)) fs.mkdirSync(profileDir, { recursive: true });
@@ -517,7 +538,7 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 await page.goto(link, { waitUntil: "commit", timeout: 30000 });
                 console.log(`  ✔ Sinyal verifikasi sukses.`);
                 fs.appendFileSync(CONFIG.CREDENTIALS_FILE, `${email}:${password}\n`, "utf-8");
-                await tgSendMessage(`<b>Akun Baru Berhasil Dibuat!</b>\nEmail: <code>${email}</code>\nPass: <code>${password}</code>`);
+                await tgSendMessage(`<code>${email}:${password}</code>`);
             } else {
                 throw new Error("Gagal mendapatkan link verifikasi.");
             }
@@ -1038,9 +1059,13 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
         }
     }
 
+    // --- LOOP EKSEKUSI UTAMA ---
     for (let i = 0; i < maxLoops; i++) {
         await processSinglePipeline(`Run ${i+1}/${maxLoops}`);
-        if (i < maxLoops - 1) await randomDelay(5000, 8000);
+        if (i < maxLoops - 1) {
+            console.log(`\n  ⏳ Jeda sejenak sebelum membuat akun berikutnya...`);
+            await randomDelay(5000, 8000);
+        }
     }
     
     console.log('\n  ✔ Semua operasi selesai.');
