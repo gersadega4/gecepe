@@ -1045,4 +1045,3 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
     
     console.log('\n  ✔ Semua operasi selesai.');
 })();
-}
