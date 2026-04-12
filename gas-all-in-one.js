@@ -12,6 +12,7 @@ const CONFIG = {
     LAB_URL: "https://www.skills.google/focuses/86502?parent=catalog",
     PROFILES_DIR: path.resolve(__dirname, "profiles"),
     CREDENTIALS_FILE: path.resolve(__dirname, "akun.txt"),
+    DOMAIN_URL: "https://gitlab.com/barbieanay003/seger/-/raw/main/domain.txt",
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
     TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
     DEFAULT_PASS: "Blink1997",
@@ -20,14 +21,26 @@ const CONFIG = {
 };
 
 // === 2. HELPER GENERATOR ===
-function loadDomains() {
+let LIST_DOMAIN = []; // Dideklarasikan secara global, akan diisi saat skrip dimulai
+
+// Fungsi ini diubah menjadi Async agar bisa mengunduh file
+async function loadDomains() {
     const fallback = ["hotmailvip.tokyo", "d4ngerssquy.info"];
     const domainPath = path.resolve(__dirname, "domain.txt");
+
+    try {
+        console.log(`  ↓ Mengunduh domain.txt dari GitLab...`);
+        const response = await axios.get(CONFIG.DOMAIN_URL);
+        fs.writeFileSync(domainPath, response.data, 'utf-8');
+        console.log(`  ✔ Berhasil menyimpan domain.txt lokal.`);
+    } catch (error) {
+        console.log(`  ⚠ Gagal mengunduh domain: ${error.message}. Menggunakan file lokal/fallback.`);
+    }
+
     if (!fs.existsSync(domainPath)) return fallback;
     const lines = fs.readFileSync(domainPath, 'utf-8').split('\n').map(l => l.trim()).filter(Boolean);
     return lines.length > 0 ? lines : fallback;
 }
-const LIST_DOMAIN = loadDomains();
 
 function generateRandomName(length = 7) {
     const chars = 'abcdefghijklmnopqrstuvwxyz';
@@ -41,6 +54,7 @@ function generateRandomEmail() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     let user = '';
     for (let i = 0; i < length; i++) user += chars.charAt(Math.floor(Math.random() * chars.length));
+    // Memilih domain acak dari LIST_DOMAIN yang sudah diunduh
     const domain = LIST_DOMAIN[Math.floor(Math.random() * LIST_DOMAIN.length)];
     return `${user}@${domain}`;
 }
@@ -316,6 +330,10 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
     chromium.use(stealth());
     console.log(`\n🚀 MEMULAI PIPELINE ALL-IN-ONE`);
 
+    // WAJIB: Download dan Muat Domain Sebelum Pipeline Dimulai
+    LIST_DOMAIN = await loadDomains();
+    console.log(`  ✔ ${LIST_DOMAIN.length} Domain siap digunakan untuk generasi email.`);
+
     const maxLoops = 1; // Ubah jika ingin membuat banyak akun sekaligus
     const useHeadless = false;
 
@@ -336,8 +354,6 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
         const proxyStr = loadProxy();
         const proxyConfig = proxyStr ? parseProxyString(proxyStr) : undefined;
         const extensionPath = path.resolve(__dirname, "Humans");
-
-        const { getRandomFingerprint, applyFingerprint } = require("./fingerprint");
 
         const fp = getRandomFingerprint();
 
@@ -390,21 +406,17 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             await page.keyboard.press("PageDown");
             await randomDelay(2000, 2500);
 
-            // [KUNCI LOGIKA FIX]: Iterasi frames persis seperti create.py
             for (const frame of page.frames()) {
                 if (frame.url().includes("recaptcha") && frame.url().includes("anchor")) {
                     try {
                         await frame.locator("#recaptcha-anchor").click({ timeout: 5000 });
-                        break; // Berhenti mencari jika sudah berhasil diklik
-                    } catch (e) {
-                        // pass (mirip dengan try-except pass di Python)
-                    }
+                        break; 
+                    } catch (e) {}
                 }
             }
             
             await randomDelay(3000, 3500);
 
-            // Deteksi awal apakah ada challenge gambar
             let initial_bframe = page.frames().find(f => f.url().includes('bframe'));
             let captcha_solved = false;
 
@@ -414,7 +426,6 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 
                 for (let attempt = 1; attempt <= max_retries; attempt++) {
                     try {
-                        // Cari ulang iframe di setiap iterasi
                         let current_bframe = page.frames().find(f => f.url().includes('bframe'));
                         
                         if (!current_bframe) {
@@ -429,7 +440,7 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                         console.log(`  ✔ [Attempt ${attempt}] Ekstensi diklik...`);
 
                         let success_inner = false;
-                        for (let w = 0; w < 40; w++) { // Polling bypass sukses
+                        for (let w = 0; w < 40; w++) { 
                             await randomDelay(500, 600);
                             
                             const token = await page.evaluate(() => document.getElementById("g-recaptcha-response")?.value);
@@ -453,14 +464,14 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                         if (success_inner) {
                             console.log("  ✔ reCAPTCHA Berhasil (Bypass).");
                             captcha_solved = true;
-                            break; // Bypass sukses, keluar dari loop retry
+                            break;
                         } else {
                             console.log(`  ✘ [Attempt ${attempt}] Ekstensi gagal memproses gambar.`);
                             if (attempt < max_retries) {
                                 try {
                                     console.log("  ↻ Memuat ulang gambar reCAPTCHA...");
                                     await current_bframe.locator('#recaptcha-reload-button').click({ timeout: 5000 });
-                                    await randomDelay(4000, 4500); // Waktu tunggu kritis
+                                    await randomDelay(4000, 4500);
                                 } catch (e) {
                                     console.log(`  ⚠ Gagal menekan tombol reload: ${e.message.split('\n')[0].substring(0, 40)}`);
                                 }
@@ -482,8 +493,6 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             console.log("  → Klik Create account...");
             const createBtn = page.locator("button[data-analytics-action='clicked_create_account']").first();
             await createBtn.scrollIntoViewIfNeeded();
-            
-            // Menggunakan DOM click (sama seperti versi Python Anda) untuk mem-bypass Playwright navigation wait
             await createBtn.evaluate(node => node.click());
             await randomDelay(1000, 2000);
 
@@ -579,12 +588,10 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
 
             await randomDelay(3000, 4000);
             
-            // --- LOGIKA CAPTCHA TAHAP 3 (Diadaptasi dari gas.js asli) ---
             console.log('  ~ Memeriksa apakah CAPTCHA Lab diperlukan...');
             let needsCaptcha = false;
             let labAlreadyStarting = false;
 
-            // Deteksi apakah lab langsung mulai atau muncul CAPTCHA
             for (let poll = 0; poll < 15; poll++) {
                 await randomDelay(1000, 1500);
                 const labState = await page.evaluate(() => {
@@ -622,7 +629,6 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 console.log('  → Mengklik checkbox reCAPTCHA Lab...');
                 let clicked = false;
                 
-                // Coba klik via loop frames (Super stabil)
                 for (const frame of page.frames()) {
                     if (frame.url().includes("recaptcha") && frame.url().includes("anchor")) {
                         try {
@@ -668,44 +674,34 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                             console.log(`  ✔ [Attempt ${attempt}] Tombol ekstensi diklik, menunggu bypass...`);
 
                             extSolved = false;
-                            let bypassOutcome = "TIMEOUT"; // Kategori: "INSTANT", "PROVISIONING", "RETRY", "TIMEOUT"
+                            let bypassOutcome = "TIMEOUT"; 
 
                             for (let wait = 0; wait < 30; wait++) {
-                                await randomDelay(1000, 1500); // Cek tiap 1-1.5 detik
+                                await randomDelay(1000, 1500); 
                                 
                                 try {
-                                    // -------------------------------------------------------------
-                                    // OPSI 3: INSTAN (Kredensial Langsung Muncul - Deep Search)
-                                    // -------------------------------------------------------------
                                     const isInstantReady = await page.evaluate(() => {
                                         const p = document.querySelector('ql-lab-control-panel');
                                         if(!p) return false;
                                         
                                         function checkDeep(root) {
                                             if (!root) return false;
-                                            // Cek Teks
                                             const txt = root.textContent || "";
                                             if (txt.includes("student-") || txt.includes("qwiklabs-gcp-")) return true;
-                                            // Cek Link Console
                                             const links = root.querySelectorAll('a');
                                             for (const a of links) {
                                                 if (a.href && (a.href.includes('console.cloud.google') || a.href.includes('google_sso'))) return true;
                                             }
-                                            // Rekursif menembus Shadow DOM
                                             for (const el of root.querySelectorAll('*')) {
                                                 if (el.shadowRoot && checkDeep(el.shadowRoot)) return true;
                                             }
                                             return false;
                                         }
-                                        
                                         return checkDeep(p.shadowRoot || p);
                                     }).catch(() => false);
 
                                     if (isInstantReady) { bypassOutcome = "INSTANT"; break; }
 
-                                    // -------------------------------------------------------------
-                                    // OPSI 2: PROVISIONING (Lab Loading / Butuh X Minutes)
-                                    // -------------------------------------------------------------
                                     const isProvisioning = await page.evaluate(() => {
                                         const p = document.querySelector('ql-lab-control-panel');
                                         if (!p) return false;
@@ -718,19 +714,12 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                                         bypassOutcome = "PROVISIONING"; break; 
                                     }
 
-                                    // -------------------------------------------------------------
-                                    // OPSI 4 (Penyelamat): BFRAME TERTUTUP (Indikator paling kuat CAPTCHA beres)
-                                    // -------------------------------------------------------------
                                     const bframeLoc = page.locator('iframe[src*="bframe"]').first();
                                     const isBframeVisible = await bframeLoc.isVisible().catch(() => false);
                                     if (!isBframeVisible) {
-                                        // Jika popup gambar reCAPTCHA tiba-tiba hilang/tertutup dari layar, artinya Google ACC
                                         bypassOutcome = "PROVISIONING"; break; 
                                     }
 
-                                    // -------------------------------------------------------------
-                                    // OPSI 1: RETRY (Google Minta Pilih Gambar Lagi)
-                                    // -------------------------------------------------------------
                                     let activeBframe = page.frames().find(f => f.url().includes('bframe'));
                                     if (activeBframe) {
                                         const tryAgainMsg = activeBframe.locator('.rc-imageselect-error-select-more, .rc-imageselect-incorrect-response, .rc-doscaptcha-header-text');
@@ -741,24 +730,21 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                                 } catch (pollErr) {}
                             }
 
-                            // --- PENANGANAN HASIL BYPASS ---
                             if (bypassOutcome === "INSTANT" || bypassOutcome === "PROVISIONING") {
                                 console.log(`  ✔ Ekstensi berhasil merespons! (Mode: ${bypassOutcome})`);
                                 extSolved = true;
                                 
-                                // Klik tombol konfirmasi modal jika Google memintanya
                                 if (await launchLabLocator.isVisible().catch(() => false)) {
                                     await launchLabLocator.click({ timeout: 5000 }).catch(()=>{});
                                     console.log('  ✔ Tombol modal konfirmasi "Launch Lab" diklik!');
                                 }
-                                break; // BYPASS SUKSES -> Keluar dari loop attempt & lanjut ke skrip penunggu Lab
+                                break; 
                                 
                             } else {
                                 console.log(`  ✘ [Attempt ${attempt}] Ekstensi gagal atau gambar ditolak. (Status: ${bypassOutcome})`);
                                 if (attempt < maxRetries) {
                                     console.log('  → Reloading CAPTCHA...');
                                     try {
-                                        // Gunakan locator langsung ke DOM utama alih-alih object frame yang rentan "detached"
                                         const reloadBtn = page.frameLocator('iframe[src*="bframe"]').first().locator('#recaptcha-reload-button');
                                         if (await reloadBtn.isVisible().catch(()=>false)) {
                                             await reloadBtn.click({ timeout: 5000 });
@@ -766,7 +752,7 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                                         } else {
                                             console.log('  ⚠ Tombol reload lenyap, asumsikan CAPTCHA sukses di latar belakang.');
                                             extSolved = true; 
-                                            break; // Lanjut ke penunggu lab
+                                            break;
                                         }
                                     } catch (err) {
                                         console.log(`  ⚠ Gagal menekan reload: ${err.message.split('\n')[0]}`);
@@ -792,7 +778,7 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             console.log('  ~ Memeriksa status provisioning lab...');
             let labStarted = false;
             let timeWaited = 0;
-            let maxWait = 300000; // Default fallback 5 menit
+            let maxWait = 300000; 
             let smartWaitTriggered = false;
 
             while (timeWaited < maxWait) {
@@ -800,11 +786,9 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                     const domState = await page.evaluate(() => {
                         const result = { isReady: false, estimatedMinutes: 0 };
                         
-                        // KUNCI UTAMA: Hanya cari di dalam panel kontrol lab, JANGAN di seluruh halaman (document.body)
                         const panel = document.querySelector('ql-lab-control-panel');
-                        if (!panel) return result; // Jika panel tidak ada, pasti belum siap
+                        if (!panel) return result; 
 
-                        // FUNGSI 1: Cari Estimasi Waktu (Smart Wait) khusus di dalam panel
                         function findProvisioning(root) {
                             if (!root) return 0;
                             const banner = root.querySelector('.provisioning-banner');
@@ -823,22 +807,17 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                         }
                         result.estimatedMinutes = findProvisioning(panel.shadowRoot || panel);
 
-                        // FUNGSI 2: Cari Kredensial / Link HANYA di dalam Shadow DOM Panel
                         function checkPanelReady(root) {
                             if (!root) return false;
                             
-                            // Cek Link Console
                             const links = root.querySelectorAll('a');
                             for (const a of links) {
                                 if (a.href && (a.href.includes('console.cloud.google') || a.href.includes('google_sso'))) return true;
                             }
 
-                            // Cek Teks Kredensial
                             const text = root.textContent || "";
-                            // Regex lebih ketat agar tidak salah deteksi teks acak
                             if (text.includes("student-") || text.includes("qwiklabs-gcp-")) return true;
                             
-                            // Rekursif ke dalam elemen
                             const els = root.querySelectorAll('*');
                             for (const el of els) {
                                 if (el.shadowRoot && checkPanelReady(el.shadowRoot)) return true;
@@ -846,18 +825,15 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                             return false;
                         }
 
-                        // Eksekusi pencarian hanya jika Shadow DOM panel sudah terbentuk
                         if (panel.shadowRoot && checkPanelReady(panel.shadowRoot)) {
                             result.isReady = true;
                             return result;
                         }
 
-                        // FUNGSI 3: Fallback lewat atribut JSON labcontrolbutton
                         const attr = panel.getAttribute('labcontrolbutton');
                         if (attr) {
                             try {
                                 const s = JSON.parse(attr);
-                                // Harus running: true DAN pending: false
                                 if (s.running === true && s.pending === false) {
                                     const allAttrs = panel.getAttributeNames().map(n => panel.getAttribute(n)).join(' ');
                                     if (allAttrs.includes('student') || allAttrs.includes('project')) {
@@ -871,16 +847,14 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                         return result;
                     });
 
-                    // --- EKSEKUSI HASIL EVALUASI DOM ---
                     if (domState.isReady) {
                         labStarted = true;
                         process.stdout.write(`\r  ✔ Lab berhasil siap dalam waktu ${timeWaited / 1000} detik!        \n`);
-                        break; // Langsung lanjut ekstrak data!
+                        break; 
                     }
 
                     if (domState.estimatedMinutes > 0 && !smartWaitTriggered) {
                         smartWaitTriggered = true;
-                        // Waktu tunggu dari banner ditambah 15 detik untuk ekstra aman
                         const waitMs = (domState.estimatedMinutes * 60 * 1000) + 15000; 
                         
                         console.log(`\n  ~ Banner Provisioning Terdeteksi! Estimasi: ${domState.estimatedMinutes} menit.`);
@@ -894,11 +868,8 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                         continue; 
                     }
 
-                } catch (err) {
-                    // Abaikan error
-                }
+                } catch (err) {}
 
-                // Default Polling
                 await randomDelay(2000, 2000);
                 timeWaited += 2000;
                 
@@ -1074,3 +1045,4 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
     
     console.log('\n  ✔ Semua operasi selesai.');
 })();
+}
