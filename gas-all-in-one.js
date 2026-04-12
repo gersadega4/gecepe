@@ -4,6 +4,7 @@ const path = require("path");
 const axios = require("axios");
 const { chromium } = require("playwright-extra");
 const stealth = require("puppeteer-extra-plugin-stealth");
+const { getRandomFingerprint, applyFingerprint } = require("./fingerprint");
 
 // === 1. KONFIGURASI UTAMA ===
 const CONFIG = {
@@ -336,10 +337,15 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
         const proxyConfig = proxyStr ? parseProxyString(proxyStr) : undefined;
         const extensionPath = path.resolve(__dirname, "Humans");
 
+        const { getRandomFingerprint, applyFingerprint } = require("./fingerprint");
+
+        const fp = getRandomFingerprint();
+
         let context = await chromium.launchPersistentContext(profileDir, {
             userAgent: freshUserAgent, 
             headless: useHeadless,
-            viewport: { width: 1366, height: 768 },
+            viewport: fp.viewport,
+            screen: fp.viewport,
             args: [
                 "--start-maximized", 
                 "--disable-blink-features=AutomationControlled",
@@ -349,9 +355,11 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             ],
             ...(proxyConfig ? { proxy: proxyConfig } : {}),
             permissions: ['clipboard-read', 'clipboard-write'],
-            locale: "en-US",
-            timezoneId: "Asia/Jakarta",
+            locale: fp.locale,
+            timezoneId: fp.timezone,
         });
+
+        await applyFingerprint(context, fp);
 
         let page = context.pages()[0] || (await context.newPage());
 
@@ -667,14 +675,30 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                                 
                                 try {
                                     // -------------------------------------------------------------
-                                    // OPSI 3: INSTAN (Kredensial Langsung Muncul)
+                                    // OPSI 3: INSTAN (Kredensial Langsung Muncul - Deep Search)
                                     // -------------------------------------------------------------
                                     const isInstantReady = await page.evaluate(() => {
                                         const p = document.querySelector('ql-lab-control-panel');
                                         if(!p) return false;
-                                        const text = (p.shadowRoot || p).textContent || "";
-                                        const links = Array.from((p.shadowRoot || p).querySelectorAll('a'));
-                                        return text.includes("student-") || text.includes("qwiklabs-gcp-") || links.some(a => a.href && a.href.includes('console.cloud.google'));
+                                        
+                                        function checkDeep(root) {
+                                            if (!root) return false;
+                                            // Cek Teks
+                                            const txt = root.textContent || "";
+                                            if (txt.includes("student-") || txt.includes("qwiklabs-gcp-")) return true;
+                                            // Cek Link Console
+                                            const links = root.querySelectorAll('a');
+                                            for (const a of links) {
+                                                if (a.href && (a.href.includes('console.cloud.google') || a.href.includes('google_sso'))) return true;
+                                            }
+                                            // Rekursif menembus Shadow DOM
+                                            for (const el of root.querySelectorAll('*')) {
+                                                if (el.shadowRoot && checkDeep(el.shadowRoot)) return true;
+                                            }
+                                            return false;
+                                        }
+                                        
+                                        return checkDeep(p.shadowRoot || p);
                                     }).catch(() => false);
 
                                     if (isInstantReady) { bypassOutcome = "INSTANT"; break; }
@@ -694,10 +718,15 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                                         bypassOutcome = "PROVISIONING"; break; 
                                     }
 
-                                    // Cek Tambahan: Jika Frame CAPTCHA lenyap secara tiba-tiba, itu 99% pertanda sukses pindah ke Provisioning
-                                    const hasBframe = page.frames().some(f => f.url().includes('bframe'));
-                                    if (!hasBframe) { bypassOutcome = "PROVISIONING"; break; }
-
+                                    // -------------------------------------------------------------
+                                    // OPSI 4 (Penyelamat): BFRAME TERTUTUP (Indikator paling kuat CAPTCHA beres)
+                                    // -------------------------------------------------------------
+                                    const bframeLoc = page.locator('iframe[src*="bframe"]').first();
+                                    const isBframeVisible = await bframeLoc.isVisible().catch(() => false);
+                                    if (!isBframeVisible) {
+                                        // Jika popup gambar reCAPTCHA tiba-tiba hilang/tertutup dari layar, artinya Google ACC
+                                        bypassOutcome = "PROVISIONING"; break; 
+                                    }
 
                                     // -------------------------------------------------------------
                                     // OPSI 1: RETRY (Google Minta Pilih Gambar Lagi)
@@ -729,14 +758,15 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                                 if (attempt < maxRetries) {
                                     console.log('  → Reloading CAPTCHA...');
                                     try {
-                                        let activeBframe = page.frames().find(f => f.url().includes('bframe'));
-                                        if (activeBframe) {
-                                            const reloadBtn = activeBframe.locator('#recaptcha-reload-button').first();
-                                            // Cek aman sebelum klik reload agar tidak error "detached"
-                                            if (await reloadBtn.isVisible().catch(()=>false)) {
-                                                await reloadBtn.click({ timeout: 5000 });
-                                                await randomDelay(3000, 4000);
-                                            }
+                                        // Gunakan locator langsung ke DOM utama alih-alih object frame yang rentan "detached"
+                                        const reloadBtn = page.frameLocator('iframe[src*="bframe"]').first().locator('#recaptcha-reload-button');
+                                        if (await reloadBtn.isVisible().catch(()=>false)) {
+                                            await reloadBtn.click({ timeout: 5000 });
+                                            await randomDelay(3000, 4000);
+                                        } else {
+                                            console.log('  ⚠ Tombol reload lenyap, asumsikan CAPTCHA sukses di latar belakang.');
+                                            extSolved = true; 
+                                            break; // Lanjut ke penunggu lab
                                         }
                                     } catch (err) {
                                         console.log(`  ⚠ Gagal menekan reload: ${err.message.split('\n')[0]}`);
@@ -1000,7 +1030,8 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 context = await chromium.launchPersistentContext(profileDir, {
                     userAgent: freshUserAgent,
                     headless: useHeadless,
-                    viewport: { width: 1366, height: 768 },
+                    viewport: fp.viewport,
+                    screen: fp.viewport,
                     args: [
                         "--start-maximized",
                         "--disable-blink-features=AutomationControlled",
@@ -1010,8 +1041,8 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                         `--load-extension=${extensionPath}`
                     ],
                     permissions: ['clipboard-read', 'clipboard-write'],
-                    locale: "en-US",
-                    timezoneId: "Asia/Jakarta",
+                    locale: fp.locale,
+                    timezoneId: fp.timezone,
                 });
 
                 await runCloudShell(context, consoleLink, password, projectId, username, labPassword);
