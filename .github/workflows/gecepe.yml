@@ -32,11 +32,6 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
       - name: Install System Dependencies (Xvfb)
         run: |
           sudo apt-get update
@@ -45,21 +40,25 @@ jobs:
       - name: Install Node Dependencies
         run: npm install
 
-      - name: Install Python Dependencies
-        run: |
-          pip install playwright
-          playwright install chromium
-
       - name: Install Playwright Browsers (Node)
-        run: npx playwright install chromium
+        # Menambahkan --with-deps agar library bawaan Linux untuk Chromium ikut terinstal
+        run: npx playwright install chromium --with-deps
 
-      - name: Execute Account Creator (Python)
-        # Menjalankan Python menggunakan simulasi layar Xvfb
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" python create.py
+      - name: Execute Lab Automation (Node All-in-One)
+        # Menjalankan script Node yang baru menggunakan simulasi layar Xvfb
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" node gas-all-in-one.js
 
-      - name: Execute Lab Automation (Node)
-        # Menjalankan Node menggunakan simulasi layar Xvfb
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" npm start
+      - name: Upload Result Artifacts
+        uses: actions/upload-artifact@v4
+        if: always() # Tetap upload hasil meskipun terjadi error di tengah jalan
+        with:
+          # Nama artifact dibuat unik per job matrix agar tidak saling timpa
+          name: bot-results-job-${{ matrix.job_id }}
+          path: |
+            akun.txt
+            result.txt
+            link.txt
+          retention-days: 3
 
   # Job terpisah yang berjalan jika matrix 'run' selesai (baik sukses maupun ada yang gagal),
   # KECUALI jika workflow dibatalkan (cancelled) secara manual oleh user.
