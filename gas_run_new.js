@@ -295,15 +295,9 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
         process.exit(1);
     }
 
-    // Ambil tepat 1 akun secara acak
-    const randomIndex = Math.floor(Math.random() * LIST_AKUN.length);
-    const targetAccount = LIST_AKUN[randomIndex];
-    
-    console.log(`  ✔ Memilih akun secara acak (Index: ${randomIndex}). Target dieksekusi: 1 akun.`);
-
-    // WAJIB FALSE: Karena akan dijalankan di dalam xvfb-run
     const useHeadless = false; 
 
+    // Fungsi dimodifikasi untuk mereturn nilai (SUCCESS, ERROR, atau ALREADY_RUNNING)
     async function processSinglePipeline(label, email, password) {
         console.log(`\n${'═'.repeat(50)}`);
         console.log(`  ${label}`);
@@ -331,7 +325,7 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 "--start-maximized", 
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
-                "--disable-gpu", // Ekstra stabilitas di Linux CI/CD
+                "--disable-gpu", 
                 `--disable-extensions-except=${extensionPath}`, 
                 `--load-extension=${extensionPath}`
             ],
@@ -356,11 +350,9 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
 
             const emailBtn = page.locator('#use-email-and-password-button');
             if (await emailBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-                console.log(`[${label}]  → Klik "Use email and password"...`);
                 await emailBtn.click();
                 await randomDelay(1000, 2000);
 
-                console.log(`[${label}]  → Mengisi kredensial login...`);
                 const emailField = page.locator('input[type="email"], input[name="user[email]"], input#user_email');
                 await emailField.waitFor({ state: "visible" });
                 await emailField.click();
@@ -372,7 +364,6 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 await humanType(passwordField, password);
                 await randomDelay(800, 1500);
 
-                console.log(`[${label}]  → Klik Sign in...`);
                 const signInBtn = page.locator('ql-button[type="submit"][data-analytics-action="clicked_sign_in"]');
                 await signInBtn.click();
 
@@ -388,17 +379,48 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             await randomDelay(2000, 3000);
 
             // ==========================================
-            // TAHAP 2: BUKA LAB & EKSTRAK DOM
+            // TAHAP 2: BUKA LAB & PENGAWASAN
             // ==========================================
             console.log(`\n[${label}] ┌─────────────────────────────────────────`);
-            console.log(`[${label}] │  Tahap 2 — Buka & Mulai Lab`);
+            console.log(`[${label}] │  Tahap 2 — Pengawasan & Ekstrak`);
             console.log(`[${label}] └─────────────────────────────────────────`);
             await page.goto(CONFIG.LAB_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
             await randomDelay(2000, 3000);
 
-            console.log(`[${label}]  ~ Menunggu ql-lab-control-panel...`);
+            console.log(`[${label}]  ~ Menunggu DOM Lab...`);
             await page.waitForSelector('ql-lab-control-panel', { state: 'attached', timeout: 30000 });
             
+            // ----------------------------------------------------
+            // BARU: PENGAWAS (WATCHER) STATUS LAB
+            // ----------------------------------------------------
+            console.log(`[${label}]  ~ Memeriksa apakah Lab sebelumnya masih berjalan...`);
+            const isLabAlreadyRunning = await page.evaluate(() => {
+                // Mengecek eksistensi div atau ql-lab-timer secara langsung
+                const timerDirect = document.querySelector('ql-lab-timer#lab-timer, .lab-timer-container');
+                if (timerDirect) return true;
+
+                // Membedah Shadow DOM jika disembunyikan
+                const panel = document.querySelector('ql-lab-control-panel');
+                if (!panel) return false;
+                
+                if (panel.shadowRoot) {
+                    const text = panel.shadowRoot.textContent || '';
+                    // Mencakup bahasa Indonesia dan Inggris
+                    if (text.includes('Batas waktu') || text.includes('Akhiri Lab') || text.includes('End Lab') || text.includes('Time remaining')) {
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+            if (isLabAlreadyRunning) {
+                console.log(`[${label}]  ⛔ PENGHENTIAN: Lab di akun ini masih BERJALAN/AKTIF!`);
+                return "ALREADY_RUNNING"; // Memicu pergantian akun di fungsi utama
+            }
+
+            console.log(`[${label}]  ✔ Lab dalam status bersih (belum dimulai). Melanjutkan eksekusi...`);
+            // ----------------------------------------------------
+
             console.log(`[${label}]  → Klik Start Lab...`);
             await page.evaluate(() => {
                 const panel = document.querySelector('ql-lab-control-panel');
@@ -457,7 +479,6 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                         try {
                             await frame.locator("#recaptcha-anchor").click({ timeout: 5000 });
                             clicked = true;
-                            console.log(`[${label}]  ✔ Checkbox reCAPTCHA diklik!`);
                             break;
                         } catch (e) {}
                     }
@@ -471,9 +492,7 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                     } catch (e) {}
                 }
 
-                console.log(`[${label}]  ~ Menunggu reCAPTCHA diproses...`);
                 await randomDelay(2000, 3000);
-                
                 let bframeExists = page.frames().some(f => f.url().includes('bframe'));
                 
                 if (bframeExists) {
@@ -760,18 +779,6 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             console.log(`[${label}]  │  Project ID   : ${projectId || 'FAIL'}`);
             console.log(`[${label}]  └────────────────────────────────────────`);
 
-            const resultLines = [
-                `=== Lab Results === ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} ===`,
-                `Console Link: ${consoleLink || 'not found'}`, 
-                `Username: ${username || 'not found'}`, 
-                `Password: ${labPassword || 'not found'}`, 
-                `Project ID: ${projectId || 'not found'}`, 
-                `Lab URL: ${page.url()}\n`,
-            ];
-            fs.appendFileSync(path.resolve(__dirname, 'result.txt'), resultLines.join('\n'), 'utf-8');
-            
-            if (consoleLink) fs.appendFileSync(path.resolve(__dirname, 'link.txt'), consoleLink + '\n', 'utf-8');
-
             // ==========================================
             // TAHAP 3: RE-LAUNCH TANPA PROXY & EKSEKUSI
             // ==========================================
@@ -805,11 +812,11 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             console.log(`\n[${label}] ┌─────────────────────────────────────────`);
             console.log(`[${label}] │  Selesai! Pipeline Sukses.`);
             console.log(`[${label}] └─────────────────────────────────────────`);
-            return true;
+            return "SUCCESS";
 
         } catch (err) {
             console.error(`[${label}]  ✘ Pipeline Error:`, err.message);
-            return false;
+            return "ERROR";
         } finally {
             if (context) await context.close().catch(() => {});
             try {
@@ -821,8 +828,43 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
         }
     }
 
-    // Eksekusi Langsung 1 Akun Terpilih
-    await processSinglePipeline(`Action-Run | Akun Acak`, targetAccount.email, targetAccount.password);
-    
-    console.log('\n  ✔ Operasi eksekusi selesai.');
+    // -----------------------------------------------------------------
+    // LOOP EKSEKUSI (RETRY MECHANISM)
+    // Akan terus mencari akun acak baru sampai mendapatkan "SUCCESS"
+    // atau mencapai batas maksimal (MAX_RETRIES) agar tidak infinite loop
+    // -----------------------------------------------------------------
+    let isFinished = false;
+    let attemptCount = 0;
+    const MAX_RETRIES = 15; // Batas aman untuk GitHub Actions
+
+    while (!isFinished && attemptCount < MAX_RETRIES) {
+        attemptCount++;
+        
+        const randomIndex = Math.floor(Math.random() * LIST_AKUN.length);
+        const targetAccount = LIST_AKUN[randomIndex];
+        
+        console.log(`\n================================================================`);
+        console.log(` 🔄 ATTEMPT ${attemptCount}/${MAX_RETRIES} | Memilih Akun: ${targetAccount.email}`);
+        console.log(`================================================================`);
+
+        const resultStatus = await processSinglePipeline(`Action-Run`, targetAccount.email, targetAccount.password);
+
+        if (resultStatus === "SUCCESS") {
+            console.log(`\n  ✔ Operasi eksekusi berhasil pada percobaan ke-${attemptCount}.`);
+            isFinished = true;
+        } 
+        else if (resultStatus === "ALREADY_RUNNING") {
+            console.log(`\n  ⚠ Lab pada akun ini sedang berjalan. Skrip akan merestart browser dan mencari akun lain...`);
+            await randomDelay(3000, 5000);
+        } 
+        else {
+            console.log(`\n  ✘ Terjadi Error (Timeout/Captcha dll). Skrip akan merestart browser dan mencoba akun lain...`);
+            await randomDelay(3000, 5000);
+        }
+    }
+
+    if (!isFinished) {
+        console.log(`\n  ❌ Gagal menyelesaikan pipeline setelah ${MAX_RETRIES} percobaan beruntun. Workflow dihentikan.`);
+        process.exit(1);
+    }
 })();
