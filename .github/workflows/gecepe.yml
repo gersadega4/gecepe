@@ -15,7 +15,7 @@ jobs:
       max-parallel: 5
       fail-fast: false
       matrix:
-        job_id: [1, 2, 3, 4, 5]
+        job_id: [1, 2, 3]
 
     env:
       JOB_COUNT: 5
@@ -46,7 +46,7 @@ jobs:
 
       - name: Execute Lab Automation (Node All-in-One)
         # Menjalankan script Node yang baru menggunakan simulasi layar Xvfb
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" node gas-all-in-one.js
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" node gas_run_new.js
 
       - name: Upload Result Artifacts
         uses: actions/upload-artifact@v4
