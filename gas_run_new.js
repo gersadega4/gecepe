@@ -9,6 +9,7 @@ const { getRandomFingerprint, applyFingerprint } = require("./fingerprint");
 // === 1. KONFIGURASI UTAMA ===
 const CONFIG = {
     AKUN_URL: "https://gitlab.com/barbieanay003/seger/-/raw/main/akun.txt",
+    SIGNIN_URL: "https://www.skills.google/users/sign_in",
     LAB_URL: "https://www.skills.google/focuses/86502?parent=catalog",
     PROFILES_DIR: path.resolve(__dirname, "profiles"),
     CREDENTIALS_FILE: path.resolve(__dirname, "akun.txt"),
@@ -19,7 +20,7 @@ const CONFIG = {
     MAX_DELAY: 5000,
 };
 
-// === 2. HELPER GENERATOR & DOWNLOADER ===
+// === 2. HELPER DOWNLOADER ===
 let LIST_AKUN = []; 
 
 async function loadAccounts() {
@@ -36,7 +37,6 @@ async function loadAccounts() {
 
     if (!fs.existsSync(akunPath)) throw new Error("File akun.txt tidak ditemukan dan gagal diunduh!");
     
-    // Parsing format email:password
     const lines = fs.readFileSync(akunPath, 'utf-8').split('\n').map(l => l.trim()).filter(Boolean);
     const parsedAccounts = lines.map(line => {
         const parts = line.split(':');
@@ -281,7 +281,6 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
     chromium.use(stealth());
     console.log(`\n🚀 MEMULAI PIPELINE ALL-IN-ONE (MODE GITHUB ACTIONS)`);
 
-    // WAJIB: Download dan Muat Akun
     try {
         LIST_AKUN = await loadAccounts();
     } catch (e) {
@@ -296,17 +295,15 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
         process.exit(1);
     }
 
-    // --- MODIFIKASI 1: Pemilihan 1 Akun Secara Acak (Random) ---
+    // Ambil tepat 1 akun secara acak
     const randomIndex = Math.floor(Math.random() * LIST_AKUN.length);
     const targetAccount = LIST_AKUN[randomIndex];
     
     console.log(`  ✔ Memilih akun secara acak (Index: ${randomIndex}). Target dieksekusi: 1 akun.`);
 
-    // --- MODIFIKASI 2: Penyesuaian Headless untuk CI/CD ---
-    // Di GitHub Actions kita menggunakan xvfb, jadi biarkan headless: false
+    // WAJIB FALSE: Karena akan dijalankan di dalam xvfb-run
     const useHeadless = false; 
 
-    // Fungsi tunggal yang diperbarui
     async function processSinglePipeline(label, email, password) {
         console.log(`\n${'═'.repeat(50)}`);
         console.log(`  ${label}`);
@@ -321,7 +318,7 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
         const freshUserAgent = getRandomUserAgent();
         const proxyStr = loadProxy();
         const proxyConfig = proxyStr ? parseProxyString(proxyStr) : undefined;
-        const extensionPath = path.resolve(__dirname, "Humans"); // Pastikan folder Humans ikut di-push ke GitHub
+        const extensionPath = path.resolve(__dirname, "Humans"); 
 
         const fp = getRandomFingerprint();
 
@@ -334,7 +331,7 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 "--start-maximized", 
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
-                "--disable-gpu", // Penting untuk kelancaran di CI/CD Linux
+                "--disable-gpu", // Ekstra stabilitas di Linux CI/CD
                 `--disable-extensions-except=${extensionPath}`, 
                 `--load-extension=${extensionPath}`
             ],
@@ -349,19 +346,21 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
 
         try {
             // ==========================================
-            // TAHAP 1: LOGIN AKUN EKSISTING
+            // TAHAP 1: LOGIN AKUN
             // ==========================================
             console.log(`\n[${label}] ┌─────────────────────────────────────────`);
             console.log(`[${label}] │  Tahap 1 — Login Akun`);
             console.log(`[${label}] └─────────────────────────────────────────`);
-            await page.goto("https://www.skills.google/users/sign_in", { waitUntil: "domcontentloaded", timeout: 60000 });
+            await page.goto(CONFIG.SIGNIN_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
             await randomDelay(2000, 3000);
 
             const emailBtn = page.locator('#use-email-and-password-button');
             if (await emailBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+                console.log(`[${label}]  → Klik "Use email and password"...`);
                 await emailBtn.click();
                 await randomDelay(1000, 2000);
 
+                console.log(`[${label}]  → Mengisi kredensial login...`);
                 const emailField = page.locator('input[type="email"], input[name="user[email]"], input#user_email');
                 await emailField.waitFor({ state: "visible" });
                 await emailField.click();
@@ -373,6 +372,7 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 await humanType(passwordField, password);
                 await randomDelay(800, 1500);
 
+                console.log(`[${label}]  → Klik Sign in...`);
                 const signInBtn = page.locator('ql-button[type="submit"][data-analytics-action="clicked_sign_in"]');
                 await signInBtn.click();
 
@@ -380,10 +380,10 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                     await page.waitForURL(url => !url.href.includes("sign_in"), { timeout: 20000 });
                     console.log(`[${label}]  ✔ Login sukses! Redirect ke ${page.url()}`);
                 } catch (e) {
-                    console.log(`[${label}]  ⚠ Timeout redirect login, asumsikan berhasil...`);
+                    console.log(`[${label}]  ⚠ Timeout redirect login, asumsikan berhasil dan lanjut ke Lab...`);
                 }
             } else {
-                console.log(`[${label}]  ✔ Sesi sudah login.`);
+                console.log(`[${label}]  ✔ Sesi sudah login (tombol login tidak muncul).`);
             }
             await randomDelay(2000, 3000);
 
@@ -393,13 +393,414 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             console.log(`\n[${label}] ┌─────────────────────────────────────────`);
             console.log(`[${label}] │  Tahap 2 — Buka & Mulai Lab`);
             console.log(`[${label}] └─────────────────────────────────────────`);
+            await page.goto(CONFIG.LAB_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+            await randomDelay(2000, 3000);
+
+            console.log(`[${label}]  ~ Menunggu ql-lab-control-panel...`);
+            await page.waitForSelector('ql-lab-control-panel', { state: 'attached', timeout: 30000 });
             
-            // KODE SAMA DENGAN SEBELUMNYA (Tidak diubah agar ekstrak DOM aman)
-            // ... [Sisipkan blok evaluasi ql-lab-control-panel, Captcha, dan Provisioning dari skrip lama Anda di sini] ...
+            console.log(`[${label}]  → Klik Start Lab...`);
+            await page.evaluate(() => {
+                const panel = document.querySelector('ql-lab-control-panel');
+                if (!panel || !panel.shadowRoot) return;
+                const controlBtn = panel.shadowRoot.querySelector('ql-lab-control-button, #lab-control-button');
+                if (!controlBtn || !controlBtn.shadowRoot) return;
+                const qlBtn = controlBtn.shadowRoot.querySelector('ql-button');
+                if (qlBtn) qlBtn.click();
+            });
+
+            await randomDelay(3000, 4000);
             
-            // Untuk mempersingkat contoh respons, asumsikan blok kode ini berisi 
-            // logika eksekusi lab Anda yang sama persis seperti sebelumnya.
-            console.log(`[${label}]  ✔ Eksekusi Lab Dilewati untuk mempersingkat (Gunakan kode lama di blok ini)`);
+            console.log(`[${label}]  ~ Memeriksa apakah CAPTCHA Lab diperlukan...`);
+            let needsCaptcha = false;
+            let labAlreadyStarting = false;
+
+            for (let poll = 0; poll < 15; poll++) {
+                await randomDelay(1000, 1500);
+                const labState = await page.evaluate(() => {
+                    const panel = document.querySelector('ql-lab-control-panel');
+                    if (!panel) return { starting: false };
+                    if (panel.shadowRoot) {
+                        const text = panel.shadowRoot.textContent || '';
+                        if (text.includes('End Lab') || text.includes('Provisioning')) return { starting: true };
+                    }
+                    const attr = panel.getAttribute('labcontrolbutton');
+                    if (attr) {
+                        try {
+                            const s = JSON.parse(attr);
+                            if (s.running || s.pending) return { starting: true };
+                        } catch {}
+                    }
+                    return { starting: false };
+                }).catch(() => ({ starting: false }));
+
+                if (labState.starting) {
+                    console.log(`[${label}]  ✔ Lab mulai berjalan — tidak perlu CAPTCHA!`);
+                    labAlreadyStarting = true;
+                    break;
+                }
+
+                const anchorFrame = page.frames().find(f => f.url().includes('recaptcha') && f.url().includes('anchor') && !f.url().includes('invisible'));
+                if (anchorFrame) {
+                    console.log(`[${label}]  ✔ reCAPTCHA Lab terdeteksi!`);
+                    needsCaptcha = true;
+                    break;
+                }
+            }
+
+            if (needsCaptcha) {
+                console.log(`[${label}]  → Mengklik checkbox reCAPTCHA Lab...`);
+                let clicked = false;
+                
+                for (const frame of page.frames()) {
+                    if (frame.url().includes("recaptcha") && frame.url().includes("anchor")) {
+                        try {
+                            await frame.locator("#recaptcha-anchor").click({ timeout: 5000 });
+                            clicked = true;
+                            console.log(`[${label}]  ✔ Checkbox reCAPTCHA diklik!`);
+                            break;
+                        } catch (e) {}
+                    }
+                }
+
+                if (!clicked) {
+                    try {
+                        const frameLoc = page.frameLocator('iframe[src*="recaptcha"][src*="anchor"]').first();
+                        await frameLoc.locator('#recaptcha-anchor').click({ timeout: 5000 });
+                        clicked = true;
+                    } catch (e) {}
+                }
+
+                console.log(`[${label}]  ~ Menunggu reCAPTCHA diproses...`);
+                await randomDelay(2000, 3000);
+                
+                let bframeExists = page.frames().some(f => f.url().includes('bframe'));
+                
+                if (bframeExists) {
+                    console.log(`[${label}]  → Image challenge muncul — memicu ekstensi "Human"...`);
+                    const maxRetries = 3;
+                    let extSolved = false;
+                    const launchLabLocator = page.locator('.js-launch-button.js-lab-access-modal-button, button:has-text("Launch with")').first();
+
+                    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                        let currentBframe = page.frames().find(f => f.url().includes('bframe'));
+                        if (!currentBframe) break;
+
+                        try {
+                            const extButton = currentBframe.locator('.help-button-holder').first();
+                            await extButton.waitFor({ state: 'visible', timeout: 8000 });
+                            await extButton.click();
+                            console.log(`[${label}]  ✔ [Attempt ${attempt}] Tombol ekstensi diklik, menunggu bypass...`);
+
+                            extSolved = false;
+                            let bypassOutcome = "TIMEOUT"; 
+
+                            for (let wait = 0; wait < 30; wait++) {
+                                await randomDelay(1000, 1500); 
+                                
+                                try {
+                                    const isInstantReady = await page.evaluate(() => {
+                                        const p = document.querySelector('ql-lab-control-panel');
+                                        if(!p) return false;
+                                        function checkDeep(root) {
+                                            if (!root) return false;
+                                            const txt = root.textContent || "";
+                                            if (txt.includes("student-") || txt.includes("qwiklabs-gcp-")) return true;
+                                            const links = root.querySelectorAll('a');
+                                            for (const a of links) {
+                                                if (a.href && (a.href.includes('console.cloud.google') || a.href.includes('google_sso'))) return true;
+                                            }
+                                            for (const el of root.querySelectorAll('*')) {
+                                                if (el.shadowRoot && checkDeep(el.shadowRoot)) return true;
+                                            }
+                                            return false;
+                                        }
+                                        return checkDeep(p.shadowRoot || p);
+                                    }).catch(() => false);
+
+                                    if (isInstantReady) { bypassOutcome = "INSTANT"; break; }
+
+                                    const isProvisioning = await page.evaluate(() => {
+                                        const p = document.querySelector('ql-lab-control-panel');
+                                        if (!p) return false;
+                                        if (p.shadowRoot && p.shadowRoot.textContent.includes('Provisioning')) return true;
+                                        const attr = p.getAttribute('labcontrolbutton');
+                                        return attr && (attr.includes('"running":true') || attr.includes('"pending":true'));
+                                    }).catch(() => false);
+
+                                    if (isProvisioning || await launchLabLocator.isVisible().catch(() => false)) { 
+                                        bypassOutcome = "PROVISIONING"; break; 
+                                    }
+
+                                    const bframeLoc = page.locator('iframe[src*="bframe"]').first();
+                                    const isBframeVisible = await bframeLoc.isVisible().catch(() => false);
+                                    if (!isBframeVisible) {
+                                        bypassOutcome = "PROVISIONING"; break; 
+                                    }
+
+                                    let activeBframe = page.frames().find(f => f.url().includes('bframe'));
+                                    if (activeBframe) {
+                                        const tryAgainMsg = activeBframe.locator('.rc-imageselect-error-select-more, .rc-imageselect-incorrect-response, .rc-doscaptcha-header-text');
+                                        if (await tryAgainMsg.isVisible().catch(() => false)) {
+                                            bypassOutcome = "RETRY"; break; 
+                                        }
+                                    }
+                                } catch (pollErr) {}
+                            }
+
+                            if (bypassOutcome === "INSTANT" || bypassOutcome === "PROVISIONING") {
+                                console.log(`[${label}]  ✔ Ekstensi berhasil merespons! (Mode: ${bypassOutcome})`);
+                                extSolved = true;
+                                
+                                if (await launchLabLocator.isVisible().catch(() => false)) {
+                                    await launchLabLocator.click({ timeout: 5000 }).catch(()=>{});
+                                    console.log(`[${label}]  ✔ Tombol modal "Launch Lab" diklik!`);
+                                }
+                                break; 
+                            } else {
+                                if (attempt < maxRetries) {
+                                    try {
+                                        const reloadBtn = page.frameLocator('iframe[src*="bframe"]').first().locator('#recaptcha-reload-button');
+                                        if (await reloadBtn.isVisible().catch(()=>false)) {
+                                            await reloadBtn.click({ timeout: 5000 });
+                                            await randomDelay(3000, 4000);
+                                        } else {
+                                            extSolved = true; 
+                                            break;
+                                        }
+                                    } catch (err) {}
+                                }
+                            }
+                        } catch (e) {}
+                    }
+                    if (!extSolved) throw new Error('CAPTCHA gagal dilalui ekstensi');
+                } else {
+                     const launchLabLocator = page.locator('.js-launch-button.js-lab-access-modal-button, button:has-text("Launch with")').first();
+                     if (await launchLabLocator.isVisible({timeout: 2000}).catch(()=>false)) {
+                         await launchLabLocator.click();
+                     }
+                }
+            }
+
+            console.log(`[${label}]  ~ Memeriksa status provisioning lab...`);
+            let labStarted = false;
+            let timeWaited = 0;
+            let maxWait = 300000; 
+            let smartWaitTriggered = false;
+
+            while (timeWaited < maxWait) {
+                try {
+                    const domState = await page.evaluate(() => {
+                        const result = { isReady: false, estimatedMinutes: 0 };
+                        const panel = document.querySelector('ql-lab-control-panel');
+                        if (!panel) return result; 
+
+                        function findProvisioning(root) {
+                            if (!root) return 0;
+                            const banner = root.querySelector('.provisioning-banner');
+                            if (banner) {
+                                const match = (banner.textContent || "").match(/(\d+)\s*minute/i);
+                                if (match) return parseInt(match[1], 10);
+                            }
+                            const els = root.querySelectorAll('*');
+                            for (const el of els) {
+                                if (el.shadowRoot) {
+                                    const mins = findProvisioning(el.shadowRoot);
+                                    if (mins > 0) return mins;
+                                }
+                            }
+                            return 0;
+                        }
+                        result.estimatedMinutes = findProvisioning(panel.shadowRoot || panel);
+
+                        function checkPanelReady(root) {
+                            if (!root) return false;
+                            const links = root.querySelectorAll('a');
+                            for (const a of links) {
+                                if (a.href && (a.href.includes('console.cloud.google') || a.href.includes('google_sso'))) return true;
+                            }
+                            const text = root.textContent || "";
+                            if (text.includes("student-") || text.includes("qwiklabs-gcp-")) return true;
+                            const els = root.querySelectorAll('*');
+                            for (const el of els) {
+                                if (el.shadowRoot && checkPanelReady(el.shadowRoot)) return true;
+                            }
+                            return false;
+                        }
+
+                        if (panel.shadowRoot && checkPanelReady(panel.shadowRoot)) {
+                            result.isReady = true;
+                            return result;
+                        }
+                        return result;
+                    });
+
+                    if (domState.isReady) {
+                        labStarted = true;
+                        process.stdout.write(`\r[${label}]  ✔ Lab berhasil siap dalam waktu ${timeWaited / 1000} detik!        \n`);
+                        break; 
+                    }
+
+                    if (domState.estimatedMinutes > 0 && !smartWaitTriggered) {
+                        smartWaitTriggered = true;
+                        const waitMs = (domState.estimatedMinutes * 60 * 1000) + 15000; 
+                        console.log(`\n[${label}]  ~ Banner Provisioning Terdeteksi! Estimasi: ${domState.estimatedMinutes} menit.`);
+                        console.log(`[${label}]  ~ Skrip akan beristirahat selama ${(waitMs / 1000).toFixed(0)} detik...`);
+                        await randomDelay(waitMs, waitMs + 1000);
+                        timeWaited += waitMs;
+                        maxWait += waitMs;
+                        continue; 
+                    }
+
+                } catch (err) {}
+
+                await randomDelay(2000, 2000);
+                timeWaited += 2000;
+                
+                if (!smartWaitTriggered && timeWaited % 10000 === 0) {
+                    process.stdout.write(`\r[${label}]  ~ Menunggu provisioning... (${timeWaited / 1000}s / ${maxWait / 1000}s)`);
+                }
+            }
+
+            if (!labStarted) {
+                console.log("\n");
+                throw new Error("Gagal memuat Lab setelah batas maksimal atau limit Quota.");
+            }
+
+            let consoleLink = null, username = null, labPassword = null, projectId = null;
+
+            console.log(`[${label}]  → Mengekstrak info lab...`);
+            const extractAll = await page.evaluate(() => {
+                function collectFromShadow(root, depth = 0) {
+                    const data = { texts: [], links: [], inputs: [] };
+                    if (!root || depth > 10) return data;
+                    
+                    const anchors = root.querySelectorAll('a');
+                    for (const a of anchors) if (a.href) data.links.push({ href: a.href, text: (a.textContent || '').trim() });
+
+                    const inputs = root.querySelectorAll('input, [contenteditable]');
+                    for (const inp of inputs) {
+                        const v = inp.value || inp.textContent || '';
+                        if (v.trim()) data.inputs.push(v.trim());
+                    }
+
+                    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
+                    let node;
+                    while (node = walker.nextNode()) {
+                        const t = node.textContent.trim();
+                        if (t.length > 0) data.texts.push(t);
+                    }
+
+                    const allEls = root.querySelectorAll('*');
+                    for (const el of allEls) {
+                        if (el.shadowRoot) {
+                            const sub = collectFromShadow(el.shadowRoot, depth + 1);
+                            data.texts.push(...sub.texts);
+                            data.links.push(...sub.links);
+                            data.inputs.push(...sub.inputs);
+                        }
+                    }
+                    return data;
+                }
+
+                const panel = document.querySelector('ql-lab-control-panel');
+                if (!panel) return { texts: [], links: [], inputs: [], attrs: {} };
+
+                const shadowData = panel.shadowRoot ? collectFromShadow(panel.shadowRoot) : { texts: [], links: [], inputs: [] };
+                const attrs = {};
+                for (const attrName of panel.getAttributeNames()) {
+                    const val = panel.getAttribute(attrName);
+                    if (val && val.length < 5000) attrs[attrName] = val;
+                }
+                shadowData.attrs = attrs;
+                return shadowData;
+            });
+
+            for (const link of extractAll.links) {
+                if (link.href.includes('console.cloud.google') || link.href.includes('google_sso') || link.text.includes('Open Google Cloud')) {
+                    consoleLink = link.href; break;
+                }
+            }
+
+            if (extractAll.attrs) {
+                for (const [key, val] of Object.entries(extractAll.attrs)) {
+                    try {
+                        const parsed = JSON.parse(val);
+                        if (typeof parsed === 'object' && parsed !== null) {
+                            if (parsed.username && !username) username = parsed.username;
+                            if (parsed.password && !labPassword) labPassword = parsed.password;
+                            if (parsed.projectId && !projectId) projectId = parsed.projectId;
+                            if (parsed.project_id && !projectId) projectId = parsed.project_id;
+                            if (parsed.student_email && !username) username = parsed.student_email;
+                        }
+                    } catch {}
+                }
+            }
+
+            const allTexts = [...extractAll.texts, ...extractAll.inputs];
+            for (const t of allTexts) {
+                const trimmed = t.trim();
+                if (!username && /^student-[a-z0-9]+@/i.test(trimmed)) username = trimmed;
+                if (!projectId && /^qwiklabs-gcp-/i.test(trimmed)) projectId = trimmed;
+            }
+
+            if (!labPassword) {
+                for (const t of allTexts) {
+                    const trimmed = t.trim();
+                    if (trimmed.length >= 8 && trimmed.length <= 16 && /[A-Za-z]/.test(trimmed) && /\d/.test(trimmed) && !/\s/.test(trimmed)) {
+                        labPassword = trimmed; break;
+                    }
+                }
+            }
+
+            console.log(`\n[${label}]  ┌─ Hasil Ekstraksi ──────────────────────`);
+            console.log(`[${label}]  │  Console Link : ${consoleLink ? 'OK' : 'FAIL'}`);
+            console.log(`[${label}]  │  Username     : ${username || 'FAIL'}`);
+            console.log(`[${label}]  │  Password     : ${labPassword || 'FAIL'}`);
+            console.log(`[${label}]  │  Project ID   : ${projectId || 'FAIL'}`);
+            console.log(`[${label}]  └────────────────────────────────────────`);
+
+            const resultLines = [
+                `=== Lab Results === ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' })} ===`,
+                `Console Link: ${consoleLink || 'not found'}`, 
+                `Username: ${username || 'not found'}`, 
+                `Password: ${labPassword || 'not found'}`, 
+                `Project ID: ${projectId || 'not found'}`, 
+                `Lab URL: ${page.url()}\n`,
+            ];
+            fs.appendFileSync(path.resolve(__dirname, 'result.txt'), resultLines.join('\n'), 'utf-8');
+            
+            if (consoleLink) fs.appendFileSync(path.resolve(__dirname, 'link.txt'), consoleLink + '\n', 'utf-8');
+
+            // ==========================================
+            // TAHAP 3: RE-LAUNCH TANPA PROXY & EKSEKUSI
+            // ==========================================
+            if (consoleLink) {
+                console.log(`\n[${label}]  → [Sistem] Menghentikan browser ber-proxy...`);
+                await context.close();
+                await randomDelay(2000, 3000);
+
+                console.log(`[${label}]  → [Sistem] Merestart browser TANPA PROXY untuk Cloud Shell...`);
+                context = await chromium.launchPersistentContext(profileDir, {
+                    userAgent: freshUserAgent,
+                    headless: useHeadless,
+                    viewport: fp.viewport,
+                    screen: fp.viewport,
+                    args: [
+                        "--start-maximized",
+                        "--disable-blink-features=AutomationControlled",
+                        "--no-sandbox",
+                        "--disable-web-security",
+                        `--disable-extensions-except=${extensionPath}`, 
+                        `--load-extension=${extensionPath}`
+                    ],
+                    permissions: ['clipboard-read', 'clipboard-write'],
+                    locale: fp.locale,
+                    timezoneId: fp.timezone,
+                });
+
+                await runCloudShell(context, consoleLink, password, projectId, username, labPassword);
+            }
 
             console.log(`\n[${label}] ┌─────────────────────────────────────────`);
             console.log(`[${label}] │  Selesai! Pipeline Sukses.`);
@@ -412,13 +813,16 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
         } finally {
             if (context) await context.close().catch(() => {});
             try {
-                if (fs.existsSync(profileDir)) fs.rmSync(profileDir, { recursive: true, force: true });
+                if (fs.existsSync(profileDir)) {
+                    fs.rmSync(profileDir, { recursive: true, force: true });
+                    console.log(`[${label}]  🧹 Clean up: Profile dihapus.`);
+                }
             } catch (cleanupErr) {}
         }
     }
 
-    // Eksekusi Langsung 1 Akun Terpilih (Tanpa Worker / Antrean)
+    // Eksekusi Langsung 1 Akun Terpilih
     await processSinglePipeline(`Action-Run | Akun Acak`, targetAccount.email, targetAccount.password);
     
-    console.log('\n  ✔ Operasi eksekusi tunggal selesai.');
+    console.log('\n  ✔ Operasi eksekusi selesai.');
 })();
