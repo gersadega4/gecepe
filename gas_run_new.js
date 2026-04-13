@@ -271,8 +271,9 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
         console.log('  ✔ Script utama berhasil dikirim (Enter)!');
         await randomDelay(8000);
 
-    } catch (e) {
-        console.log(`  ✘ Cloud Shell error: ${e.message}`);
+} catch (e) {
+        console.log(`  ✘ Cloud Shell error: ${e.message.split('\n')[0]}`);
+        throw new Error("Gagal mengeksekusi Cloud Shell"); // <-- TAMBAHKAN INI AGAR STATUS BERUBAH ERROR
     }
 }
 
@@ -635,6 +636,19 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                 try {
                     const domState = await page.evaluate(() => {
                         const result = { isReady: false, estimatedMinutes: 0, isQuotaError: false };
+                        
+                        // 1. INDIKATOR ABSOLUT: Cek visual timer. Jika timer jalan, Lab SUDAH READY!
+                        const timerDirect = document.querySelector('ql-lab-timer#lab-timer, .lab-timer-container');
+                        if (timerDirect && timerDirect.offsetWidth > 0 && timerDirect.offsetHeight > 0) {
+                            result.isReady = true;
+                        }
+
+                        // 2. INDIKATOR GLOBAL: Cek teks kredensial di seluruh body halaman
+                        const bodyText = document.body.innerText || "";
+                        if (bodyText.includes('@qwiklabs.net') || bodyText.includes('qwiklabs-gcp-')) {
+                            result.isReady = true;
+                        }
+
                         const panel = document.querySelector('ql-lab-control-panel');
                         if (!panel) return result; 
 
@@ -642,13 +656,13 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                             if (!root) return 0;
                             const text = root.textContent || "";
                             
-                            // 1. Cek Error Limit / Kuota (Fail-Fast)
+                            // Cek Error Limit / Kuota (Fail-Fast)
                             const textLower = text.toLowerCase();
                             if (textLower.includes('quota exceeded') || textLower.includes('kuota') || textLower.includes('terlampaui')) {
                                 result.isQuotaError = true;
                             }
 
-                            // 2. Ekstrak Waktu (Support 'minute' dan 'menit')
+                            // Ekstrak Waktu 
                             const banner = root.querySelector('.provisioning-banner');
                             if (banner) {
                                 const match = (banner.textContent || "").match(/(\d+)\s*(minute|menit)/i);
@@ -674,7 +688,7 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                                 if (a.href && (a.href.includes('console.cloud.google') || a.href.includes('google_sso'))) return true;
                             }
                             const text = root.textContent || "";
-                            if (text.includes("student-") || text.includes("qwiklabs-gcp-")) return true;
+                            if (text.includes("student-") || text.includes("qwiklabs-gcp-") || text.includes("@qwiklabs.net")) return true;
                             const els = root.querySelectorAll('*');
                             for (const el of els) {
                                 if (el.shadowRoot && checkPanelReady(el.shadowRoot)) return true;
@@ -685,23 +699,24 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                         if (panel.shadowRoot && checkPanelReady(panel.shadowRoot)) {
                             result.isReady = true;
                         }
+                        
                         return result;
                     });
 
-                    // 1. Jika terdeteksi Limit Kuota -> Langsung hentikan
+                    // Jika terdeteksi Limit Kuota -> Langsung hentikan
                     if (domState.isQuotaError) {
                         console.log(`\n[${label}]  ⛔ Terdeteksi Limit Kuota Google (Quota Exceeded). Membatalkan tunggu...`);
                         throw new Error("QUOTA_EXCEEDED");
                     }
 
-                    // 2. Jika Kredensial Muncul -> Sukses
+                    // Jika Kredensial Muncul ATAU Timer Jalan -> Eksekusi Sukses & Lanjut
                     if (domState.isReady) {
                         labStarted = true;
                         process.stdout.write(`\r[${label}]  ✔ Lab berhasil siap dalam waktu ${timeWaited / 1000} detik!        \n`);
                         break; 
                     }
 
-                    // 3. Jika Provisioning Banner Muncul -> Aktifkan Smart Wait
+                    // Jika Provisioning Banner Muncul -> Aktifkan Smart Wait (Tidur panjang)
                     if (domState.estimatedMinutes > 0 && !smartWaitTriggered) {
                         smartWaitTriggered = true;
                         const waitMs = (domState.estimatedMinutes * 60 * 1000) + 15000; 
@@ -709,20 +724,21 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                         console.log(`[${label}]  ~ Skrip akan beristirahat selama ${(waitMs / 1000).toFixed(0)} detik...`);
                         await randomDelay(waitMs, waitMs + 1000);
                         timeWaited += waitMs;
-                        maxWait += waitMs; // Perpanjang maxWait agar tidak putus di tengah jalan
+                        maxWait += waitMs; 
                         continue; 
                     }
 
                 } catch (err) {
-                    // Tangkap error jika itu berasal dari throw QUOTA_EXCEEDED yang kita buat
                     if (err.message === "QUOTA_EXCEEDED") {
                         throw err; 
                     }
                 }
 
+                // Jeda 2 detik sebelum mengecek DOM lagi
                 await randomDelay(2000, 2000);
                 timeWaited += 2000;
                 
+                // Print log hanya setiap 10 detik agar terminal bersih
                 if (!smartWaitTriggered && timeWaited % 10000 === 0) {
                     process.stdout.write(`\r[${label}]  ~ Menunggu provisioning... (${timeWaited / 1000}s / ${maxWait / 1000}s)`);
                 }
@@ -806,7 +822,8 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             const allTexts = [...extractAll.texts, ...extractAll.inputs];
             for (const t of allTexts) {
                 const trimmed = t.trim();
-                if (!username && /^student-[a-z0-9]+@/i.test(trimmed)) username = trimmed;
+                // REVISI: Tangkap semua email yang berakhiran @qwiklabs.net (bukan cuma awalan student-)
+                if (!username && /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]*qwiklabs\.net/i.test(trimmed)) username = trimmed;
                 if (!projectId && /^qwiklabs-gcp-/i.test(trimmed)) projectId = trimmed;
             }
 
@@ -825,6 +842,11 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             console.log(`[${label}]  │  Password     : ${labPassword || 'FAIL'}`);
             console.log(`[${label}]  │  Project ID   : ${projectId || 'FAIL'}`);
             console.log(`[${label}]  └────────────────────────────────────────`);
+
+            // REVISI: TAMBAHKAN FAIL-FAST JIKA KREDENSIAL TIDAK LENGKAP
+            if (!username || !projectId || !consoleLink) {
+                throw new Error("Ekstraksi Kredensial Lab Gagal/Tidak Lengkap. Membatalkan Cloud Shell.");
+            }
 
             // ==========================================
             // TAHAP 3: RE-LAUNCH TANPA PROXY & EKSEKUSI
