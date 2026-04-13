@@ -610,27 +610,38 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             while (timeWaited < maxWait) {
                 try {
                     const domState = await page.evaluate(() => {
-                        const result = { isReady: false, estimatedMinutes: 0 };
+                        const result = { isReady: false, estimatedMinutes: 0, isQuotaError: false };
                         const panel = document.querySelector('ql-lab-control-panel');
                         if (!panel) return result; 
 
-                        function findProvisioning(root) {
+                        function analyzeDOM(root) {
                             if (!root) return 0;
+                            const text = root.textContent || "";
+                            
+                            // 1. Cek Error Limit / Kuota (Fail-Fast)
+                            const textLower = text.toLowerCase();
+                            if (textLower.includes('quota exceeded') || textLower.includes('kuota') || textLower.includes('terlampaui')) {
+                                result.isQuotaError = true;
+                            }
+
+                            // 2. Ekstrak Waktu (Support 'minute' dan 'menit')
                             const banner = root.querySelector('.provisioning-banner');
                             if (banner) {
-                                const match = (banner.textContent || "").match(/(\d+)\s*minute/i);
+                                const match = (banner.textContent || "").match(/(\d+)\s*(minute|menit)/i);
                                 if (match) return parseInt(match[1], 10);
                             }
+                            
                             const els = root.querySelectorAll('*');
                             for (const el of els) {
                                 if (el.shadowRoot) {
-                                    const mins = findProvisioning(el.shadowRoot);
+                                    const mins = analyzeDOM(el.shadowRoot);
                                     if (mins > 0) return mins;
                                 }
                             }
                             return 0;
                         }
-                        result.estimatedMinutes = findProvisioning(panel.shadowRoot || panel);
+                        
+                        result.estimatedMinutes = analyzeDOM(panel.shadowRoot || panel);
 
                         function checkPanelReady(root) {
                             if (!root) return false;
@@ -649,17 +660,24 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
 
                         if (panel.shadowRoot && checkPanelReady(panel.shadowRoot)) {
                             result.isReady = true;
-                            return result;
                         }
                         return result;
                     });
 
+                    // 1. Jika terdeteksi Limit Kuota -> Langsung hentikan
+                    if (domState.isQuotaError) {
+                        console.log(`\n[${label}]  ⛔ Terdeteksi Limit Kuota Google (Quota Exceeded). Membatalkan tunggu...`);
+                        throw new Error("QUOTA_EXCEEDED");
+                    }
+
+                    // 2. Jika Kredensial Muncul -> Sukses
                     if (domState.isReady) {
                         labStarted = true;
                         process.stdout.write(`\r[${label}]  ✔ Lab berhasil siap dalam waktu ${timeWaited / 1000} detik!        \n`);
                         break; 
                     }
 
+                    // 3. Jika Provisioning Banner Muncul -> Aktifkan Smart Wait
                     if (domState.estimatedMinutes > 0 && !smartWaitTriggered) {
                         smartWaitTriggered = true;
                         const waitMs = (domState.estimatedMinutes * 60 * 1000) + 15000; 
@@ -667,11 +685,16 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                         console.log(`[${label}]  ~ Skrip akan beristirahat selama ${(waitMs / 1000).toFixed(0)} detik...`);
                         await randomDelay(waitMs, waitMs + 1000);
                         timeWaited += waitMs;
-                        maxWait += waitMs;
+                        maxWait += waitMs; // Perpanjang maxWait agar tidak putus di tengah jalan
                         continue; 
                     }
 
-                } catch (err) {}
+                } catch (err) {
+                    // Tangkap error jika itu berasal dari throw QUOTA_EXCEEDED yang kita buat
+                    if (err.message === "QUOTA_EXCEEDED") {
+                        throw err; 
+                    }
+                }
 
                 await randomDelay(2000, 2000);
                 timeWaited += 2000;
