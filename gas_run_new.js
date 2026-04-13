@@ -629,54 +629,91 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             console.log(`[${label}]  ~ Memeriksa status provisioning lab...`);
             let labStarted = false;
             let timeWaited = 0;
-            const maxWait = 300000; // Maksimal 5 menit (300 detik)
+            const maxWait = 300000; // Maksimal 5 menit
+            let infoShown = false;
 
             while (timeWaited < maxWait) {
                 try {
                     const domState = await page.evaluate(() => {
-                        let isReady = false;
-                        let isQuotaError = false;
+                        const state = { isReady: false, isQuotaError: false, estimatedMinutes: 0 };
+                        
+                        // FOKUS HANYA PADA PANEL KONTROL KREDENSIAL, JANGAN document.body
+                        const panel = document.querySelector('ql-lab-control-panel');
+                        if (!panel) return state;
 
-                        function analyzeShadowDeep(root) {
-                            if (!root || isReady) return; // Stop rekursi jika sudah ketemu
+                        function analyzePanel(root) {
+                            if (!root) return;
+
+                            const textLower = (root.textContent || "").toLowerCase();
                             
-                            // 1. Cek Timer (Batas Waktu) aktif secara visual
-                            const timer = root.querySelector('ql-lab-timer, .lab-timer-container, #lab-timer');
-                            if (timer && timer.offsetWidth > 0 && timer.offsetHeight > 0) {
-                                isReady = true;
+                            // 1. Cek Error Kuota
+                            if (textLower.includes('quota exceeded') || textLower.includes('kuota') || textLower.includes('terlampaui')) {
+                                state.isQuotaError = true;
                             }
 
-                            // 2. Ekstrak seluruh teks untuk dianalisa
-                            const text = (root.textContent || "").toLowerCase();
-                            
-                            // Jika mendeteksi limit kuota (Fail-Fast)
-                            if (text.includes('quota exceeded') || text.includes('kuota') || text.includes('terlampaui')) {
-                                isQuotaError = true;
+                            // 2. Cek Banner Provisioning
+                            const banner = root.querySelector('.provisioning-banner');
+                            if (banner) {
+                                const match = (banner.textContent || "").match(/(\d+)\s*(minute|menit)/i);
+                                if (match) state.estimatedMinutes = parseInt(match[1], 10);
                             }
 
-                            // Jika mendeteksi kredensial unik Lab atau panel result
-                            if (text.includes('@qwiklabs.net') || text.includes('qwiklabs-gcp-') || text.includes('=== lab results ===')) {
-                                isReady = true;
+                            // 3. Cari Tautan Console (Indikator Kuat)
+                            const links = root.querySelectorAll('a');
+                            for (const a of links) {
+                                if (a.href && (a.href.includes('console.cloud.google') || a.href.includes('google_sso'))) {
+                                    state.isReady = true;
+                                }
                             }
 
-                            // 3. Bor (Pierce) ke dalam semua Shadow DOM yang bersarang
+                            // 4. Cari Teks Kredensial di dalam panel (Indikator Kuat)
+                            if (textLower.includes('@qwiklabs.net') || textLower.includes('qwiklabs-gcp-')) {
+                                state.isReady = true;
+                            }
+
+                            // Bor ke dalam Shadow DOM berikutnya secara rekursif
                             const allElements = root.querySelectorAll('*');
                             for (const el of allElements) {
-                                if (el.shadowRoot) analyzeShadowDeep(el.shadowRoot);
+                                if (el.shadowRoot) analyzePanel(el.shadowRoot);
                             }
                         }
 
-                        // Mulai pemindaian dari elemen teratas
-                        analyzeShadowDeep(document.body);
-                        return { isReady, isQuotaError };
+                        analyzePanel(panel.shadowRoot || panel);
+
+                        // ----------------------------------------------------
+                        // RULE ABSOLUT (OVERRIDE):
+                        // Jika teks "Provisioning" masih ada di panel ATAU 
+                        // JSON labcontrolbutton mengatakan pending: true, MAKA PAKSA BELUM READY.
+                        // ----------------------------------------------------
+                        const panelText = (panel.shadowRoot ? panel.shadowRoot.textContent : panel.textContent) || "";
+                        if (panelText.toLowerCase().includes('provisioning')) {
+                            state.isReady = false; 
+                        }
+
+                        const attr = panel.getAttribute('labcontrolbutton');
+                        if (attr) {
+                            try {
+                                const s = JSON.parse(attr);
+                                if (s.pending === true) state.isReady = false;
+                            } catch (e) {}
+                        }
+
+                        return state;
                     });
 
-                    // Evaluasi Hasil Pemindaian
+                    // 1. Handle Error Kuota
                     if (domState.isQuotaError) {
                         console.log(`\n[${label}]  ⛔ Terdeteksi Limit Kuota Google. Membatalkan antrean...`);
                         throw new Error("QUOTA_EXCEEDED");
                     }
 
+                    // 2. Tampilkan notifikasi (Hanya Sekali) jika banner terdeteksi
+                    if (domState.estimatedMinutes > 0 && !infoShown) {
+                        infoShown = true;
+                        console.log(`\n[${label}]  ~ Info: Banner Provisioning terdeteksi (Estimasi ${domState.estimatedMinutes} menit). Mengawasi tiap 10 detik...`);
+                    }
+
+                    // 3. Eksekusi jika benar-benar siap
                     if (domState.isReady) {
                         labStarted = true;
                         process.stdout.write(`\r[${label}]  ✔ Lab berhasil siap dalam waktu ${timeWaited / 1000} detik!        \n`);
@@ -687,11 +724,10 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
                     if (err.message === "QUOTA_EXCEEDED") throw err; 
                 }
 
-                // Jeda persis 10 detik sesuai permintaan
+                // Jeda persis 10 detik sebelum looping lagi (Sesuai permintaan Anda)
                 await randomDelay(10000, 10000);
                 timeWaited += 10000;
                 
-                // Cetak progres log yang bersih
                 process.stdout.write(`\r[${label}]  ~ Menunggu provisioning... (${timeWaited / 1000}s / ${maxWait / 1000}s)`);
             }
 
