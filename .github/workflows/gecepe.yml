@@ -31,10 +31,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm' # Otomatis caching untuk package.json (mempercepat npm install)
+          # Baris "cache: 'npm'" DIHAPUS agar tidak mencari package-lock.json
 
       - name: Install System Dependencies (Xvfb)
-        timeout-minutes: 3 # Fail-Fast: Jika apt update macet, gagalkan dalam 3 menit
+        timeout-minutes: 3
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
@@ -46,8 +46,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          # Hash dari package-lock.json memastikan cache diperbarui jika versi playwright berubah
-          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package-lock.json') }}
+          # MODIFIKASI: Ubah pencarian hash dari package-lock.json menjadi package.json
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package.json') }}
           restore-keys: |
             ${{ runner.os }}-playwright-
 
