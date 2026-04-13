@@ -395,21 +395,45 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             // ----------------------------------------------------
             console.log(`[${label}]  ~ Memeriksa apakah Lab sebelumnya masih berjalan...`);
             const isLabAlreadyRunning = await page.evaluate(() => {
-                // Mengecek eksistensi div atau ql-lab-timer secara langsung
+                // 1. Cek elemen timer secara visual (pastikan offsetWidth > 0 / tampil di layar)
                 const timerDirect = document.querySelector('ql-lab-timer#lab-timer, .lab-timer-container');
-                if (timerDirect) return true;
+                if (timerDirect && timerDirect.offsetWidth > 0 && timerDirect.offsetHeight > 0) {
+                    return true;
+                }
 
-                // Membedah Shadow DOM jika disembunyikan
+                // 2. Cek teks "=== Lab Results ===" di seluruh body (Permintaan tambahan)
+                // Menggunakan innerText agar hanya merespons teks yang benar-benar terlihat
+                if (document.body.innerText && document.body.innerText.includes('=== Lab Results ===')) {
+                    return true;
+                }
+
+                // 3. Membedah Shadow DOM menggunakan innerText (BUKAN textContent)
                 const panel = document.querySelector('ql-lab-control-panel');
                 if (!panel) return false;
                 
                 if (panel.shadowRoot) {
-                    const text = panel.shadowRoot.textContent || '';
-                    // Mencakup bahasa Indonesia dan Inggris
-                    if (text.includes('Batas waktu') || text.includes('Akhiri Lab') || text.includes('End Lab') || text.includes('Time remaining')) {
+                    // innerText mengabaikan elemen dengan display: none
+                    const visibleText = panel.shadowRoot.innerText || ''; 
+                    
+                    if (visibleText.includes('Batas waktu') || 
+                        visibleText.includes('Akhiri Lab') || 
+                        visibleText.includes('End Lab') || 
+                        visibleText.includes('Time remaining') ||
+                        visibleText.includes('=== Lab Results ===')) {
                         return true;
                     }
                 }
+
+                // 4. (Opsional) Cek state JSON bawaan Google di atribut elemen
+                const attr = panel.getAttribute('labcontrolbutton');
+                if (attr) {
+                    try {
+                        const s = JSON.parse(attr);
+                        // Jika JSON state secara eksplisit mengatakan 'running'
+                        if (s.running === true) return true;
+                    } catch (e) {}
+                }
+
                 return false;
             });
 
