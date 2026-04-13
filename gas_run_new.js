@@ -629,124 +629,75 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
             console.log(`[${label}]  ~ Memeriksa status provisioning lab...`);
             let labStarted = false;
             let timeWaited = 0;
-            let maxWait = 300000; 
-            let smartWaitTriggered = false;
+            const maxWait = 300000; // Maksimal 5 menit (300 detik)
 
             while (timeWaited < maxWait) {
                 try {
                     const domState = await page.evaluate(() => {
-                        const result = { isReady: false, estimatedMinutes: 0, isQuotaError: false };
-                        
-                        // 1. INDIKATOR ABSOLUT: Cek visual timer. Jika timer jalan, Lab SUDAH READY!
-                        const timerDirect = document.querySelector('ql-lab-timer#lab-timer, .lab-timer-container');
-                        if (timerDirect && timerDirect.offsetWidth > 0 && timerDirect.offsetHeight > 0) {
-                            result.isReady = true;
-                        }
+                        let isReady = false;
+                        let isQuotaError = false;
 
-                        // 2. INDIKATOR GLOBAL: Cek teks kredensial di seluruh body halaman
-                        const bodyText = document.body.innerText || "";
-                        if (bodyText.includes('@qwiklabs.net') || bodyText.includes('qwiklabs-gcp-')) {
-                            result.isReady = true;
-                        }
-
-                        const panel = document.querySelector('ql-lab-control-panel');
-                        if (!panel) return result; 
-
-                        function analyzeDOM(root) {
-                            if (!root) return 0;
-                            const text = root.textContent || "";
+                        function analyzeShadowDeep(root) {
+                            if (!root || isReady) return; // Stop rekursi jika sudah ketemu
                             
-                            // Cek Error Limit / Kuota (Fail-Fast)
-                            const textLower = text.toLowerCase();
-                            if (textLower.includes('quota exceeded') || textLower.includes('kuota') || textLower.includes('terlampaui')) {
-                                result.isQuotaError = true;
+                            // 1. Cek Timer (Batas Waktu) aktif secara visual
+                            const timer = root.querySelector('ql-lab-timer, .lab-timer-container, #lab-timer');
+                            if (timer && timer.offsetWidth > 0 && timer.offsetHeight > 0) {
+                                isReady = true;
                             }
 
-                            // Ekstrak Waktu 
-                            const banner = root.querySelector('.provisioning-banner');
-                            if (banner) {
-                                const match = (banner.textContent || "").match(/(\d+)\s*(minute|menit)/i);
-                                if (match) return parseInt(match[1], 10);
-                            }
+                            // 2. Ekstrak seluruh teks untuk dianalisa
+                            const text = (root.textContent || "").toLowerCase();
                             
-                            const els = root.querySelectorAll('*');
-                            for (const el of els) {
-                                if (el.shadowRoot) {
-                                    const mins = analyzeDOM(el.shadowRoot);
-                                    if (mins > 0) return mins;
-                                }
+                            // Jika mendeteksi limit kuota (Fail-Fast)
+                            if (text.includes('quota exceeded') || text.includes('kuota') || text.includes('terlampaui')) {
+                                isQuotaError = true;
                             }
-                            return 0;
-                        }
-                        
-                        result.estimatedMinutes = analyzeDOM(panel.shadowRoot || panel);
 
-                        function checkPanelReady(root) {
-                            if (!root) return false;
-                            const links = root.querySelectorAll('a');
-                            for (const a of links) {
-                                if (a.href && (a.href.includes('console.cloud.google') || a.href.includes('google_sso'))) return true;
+                            // Jika mendeteksi kredensial unik Lab atau panel result
+                            if (text.includes('@qwiklabs.net') || text.includes('qwiklabs-gcp-') || text.includes('=== lab results ===')) {
+                                isReady = true;
                             }
-                            const text = root.textContent || "";
-                            if (text.includes("student-") || text.includes("qwiklabs-gcp-") || text.includes("@qwiklabs.net")) return true;
-                            const els = root.querySelectorAll('*');
-                            for (const el of els) {
-                                if (el.shadowRoot && checkPanelReady(el.shadowRoot)) return true;
+
+                            // 3. Bor (Pierce) ke dalam semua Shadow DOM yang bersarang
+                            const allElements = root.querySelectorAll('*');
+                            for (const el of allElements) {
+                                if (el.shadowRoot) analyzeShadowDeep(el.shadowRoot);
                             }
-                            return false;
                         }
 
-                        if (panel.shadowRoot && checkPanelReady(panel.shadowRoot)) {
-                            result.isReady = true;
-                        }
-                        
-                        return result;
+                        // Mulai pemindaian dari elemen teratas
+                        analyzeShadowDeep(document.body);
+                        return { isReady, isQuotaError };
                     });
 
-                    // Jika terdeteksi Limit Kuota -> Langsung hentikan
+                    // Evaluasi Hasil Pemindaian
                     if (domState.isQuotaError) {
-                        console.log(`\n[${label}]  ⛔ Terdeteksi Limit Kuota Google (Quota Exceeded). Membatalkan tunggu...`);
+                        console.log(`\n[${label}]  ⛔ Terdeteksi Limit Kuota Google. Membatalkan antrean...`);
                         throw new Error("QUOTA_EXCEEDED");
                     }
 
-                    // Jika Kredensial Muncul ATAU Timer Jalan -> Eksekusi Sukses & Lanjut
                     if (domState.isReady) {
                         labStarted = true;
                         process.stdout.write(`\r[${label}]  ✔ Lab berhasil siap dalam waktu ${timeWaited / 1000} detik!        \n`);
                         break; 
                     }
 
-                    // Jika Provisioning Banner Muncul -> Aktifkan Smart Wait (Tidur panjang)
-                    if (domState.estimatedMinutes > 0 && !smartWaitTriggered) {
-                        smartWaitTriggered = true;
-                        const waitMs = (domState.estimatedMinutes * 60 * 1000) + 15000; 
-                        console.log(`\n[${label}]  ~ Banner Provisioning Terdeteksi! Estimasi: ${domState.estimatedMinutes} menit.`);
-                        console.log(`[${label}]  ~ Skrip akan beristirahat selama ${(waitMs / 1000).toFixed(0)} detik...`);
-                        await randomDelay(waitMs, waitMs + 1000);
-                        timeWaited += waitMs;
-                        maxWait += waitMs; 
-                        continue; 
-                    }
-
                 } catch (err) {
-                    if (err.message === "QUOTA_EXCEEDED") {
-                        throw err; 
-                    }
+                    if (err.message === "QUOTA_EXCEEDED") throw err; 
                 }
 
-                // Jeda 2 detik sebelum mengecek DOM lagi
-                await randomDelay(2000, 2000);
-                timeWaited += 2000;
+                // Jeda persis 10 detik sesuai permintaan
+                await randomDelay(10000, 10000);
+                timeWaited += 10000;
                 
-                // Print log hanya setiap 10 detik agar terminal bersih
-                if (!smartWaitTriggered && timeWaited % 10000 === 0) {
-                    process.stdout.write(`\r[${label}]  ~ Menunggu provisioning... (${timeWaited / 1000}s / ${maxWait / 1000}s)`);
-                }
+                // Cetak progres log yang bersih
+                process.stdout.write(`\r[${label}]  ~ Menunggu provisioning... (${timeWaited / 1000}s / ${maxWait / 1000}s)`);
             }
 
             if (!labStarted) {
                 console.log("\n");
-                throw new Error("Gagal memuat Lab setelah batas maksimal atau limit Quota.");
+                throw new Error("Gagal memuat Lab setelah batas maksimal 300 detik atau terkena limit Quota.");
             }
 
             let consoleLink = null, username = null, labPassword = null, projectId = null;
