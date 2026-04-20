@@ -891,7 +891,7 @@ async function runCloudShell(context, consoleLink, password, projectId, studentE
     // -----------------------------------------------------------------
     let isFinished = false;
     let attemptCount = 0;
-    const MAX_RETRIES = 3; // Batas aman untuk GitHub Actions
+    const MAX_RETRIES = 1; // Batas aman untuk GitHub Actions
 
     while (!isFinished && attemptCount < MAX_RETRIES) {
         attemptCount++;
