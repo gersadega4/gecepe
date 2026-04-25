@@ -15,7 +15,7 @@ jobs:
       max-parallel: 5
       fail-fast: false
       matrix:
-        job_id: [1, 2, 3, 4, 5]
+        job_id: [1, 2, 3]
 
     env:
       JOB_COUNT: 5
@@ -31,8 +31,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          # Baris "cache: 'npm'" DIHAPUS agar tidak mencari package-lock.json
 
       - name: Install System Dependencies (Xvfb)
+        timeout-minutes: 3
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb
@@ -40,19 +42,28 @@ jobs:
       - name: Install Node Dependencies
         run: npm install
 
-      - name: Install Playwright Browsers (Node)
-        # Menambahkan --with-deps agar library bawaan Linux untuk Chromium ikut terinstal
+      - name: Cache Playwright Binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          # MODIFIKASI: Ubah pencarian hash dari package-lock.json menjadi package.json
+          key: ${{ runner.os }}-playwright-${{ hashFiles('**/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright Browsers & OS Dependencies
+        # Fail-Fast Utama: Jika mirror Ubuntu nyangkut saat download fonts, matikan dalam 5 menit.
+        # Job akan dianggap failed, namun trigger-next akan tetap berjalan menyelamatkan siklus.
+        timeout-minutes: 5 
         run: npx playwright install chromium --with-deps
 
       - name: Execute Lab Automation (Node All-in-One)
-        # Menjalankan script Node yang baru menggunakan simulasi layar Xvfb
-        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" node gas-all-in-one.js
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x960x24" node gas_run_new.js
 
       - name: Upload Result Artifacts
         uses: actions/upload-artifact@v4
         if: always() # Tetap upload hasil meskipun terjadi error di tengah jalan
         with:
-          # Nama artifact dibuat unik per job matrix agar tidak saling timpa
           name: bot-results-job-${{ matrix.job_id }}
           path: |
             akun.txt
@@ -72,8 +83,6 @@ jobs:
 
       - name: Trigger Workflow Again
         env:
-          # WAJIB: GITHUB_TOKEN bawaan akan memblokir trigger rekursif.
-          # Buat PAT (Classic) dengan akses 'repo' dan 'workflow', simpan di Secrets sebagai PAT_TOKEN
           GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
           gh workflow run "Railway Automation" --ref main
